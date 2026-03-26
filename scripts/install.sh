@@ -346,6 +346,14 @@ PYEOF
 deploy_cto() {
   info "Deploying CTO Factory agent..."
 
+  # Ensure rsync is available (may be missing on minimal installs)
+  if ! command -v rsync >/dev/null 2>&1; then
+    if [ "$(detect_os)" = "linux" ]; then
+      run_root apt-get install -y -qq rsync 2>/dev/null || true
+    fi
+  fi
+  command -v rsync >/dev/null 2>&1 || die "rsync is required but not found. Install it and retry."
+
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   trap "rm -rf '$tmp_dir'" EXIT
