@@ -151,25 +151,8 @@ def detect_active_step(prompts_dir: str) -> str | None:
     except Exception:
         pass
 
-    # Method 2: Check which prompt files have been recently accessed
-    # (lobster reads them sequentially, so the most recently accessed is current)
-    if prompts_dir:
-        try:
-            pd = Path(prompts_dir)
-            prompt_order = ["RESEARCH.txt", "T1.txt", "T2.txt", "T3.txt", "T4.txt", "T5.txt", "T6.txt", "T7.txt", "T8.txt", "SMOKE.txt", "VERIFY.txt"]
-            latest_name = None
-            latest_mtime = 0
-            for name in prompt_order:
-                pf = pd / name
-                if pf.exists():
-                    mtime = pf.stat().st_atime  # access time (read by code_agent_exec)
-                    if mtime > latest_mtime:
-                        latest_mtime = mtime
-                        latest_name = name
-            if latest_name and latest_mtime > 0:
-                return latest_name
-        except Exception:
-            pass
+    # Method 2 removed — st_atime is unreliable (OS prefetch, antivirus scanning)
+    # causes false "T4 started" detections. Only ps-based detection is trustworthy.
     return None
 
 
@@ -199,14 +182,20 @@ def main():
     p.add_argument("--agent-id", help="Agent ID (required for create/edit/install)")
     p.add_argument("--prompts-dir", help="Directory with prompt files")
     p.add_argument("--repo-url", default="", help="GitHub repo URL (required for install)")
-    p.add_argument("--chat-id", default="", help="Telegram chat ID for notifications")
-    p.add_argument("--topic-id", default="", help="Telegram topic ID for notifications")
+    p.add_argument("--chat-id", default="", help="Telegram chat ID for AGENT binding (where agent will live)")
+    p.add_argument("--topic-id", default="", help="Telegram topic ID for AGENT binding")
+    p.add_argument("--notify-chat-id", default="", help="Telegram chat ID for BUILD notifications (CTO's topic)")
+    p.add_argument("--notify-topic-id", default="", help="Telegram topic ID for BUILD notifications (CTO's topic)")
     p.add_argument("--test-cmd", default="python3 -m pytest -q", help="Test runner command")
     p.add_argument("--timeout", type=int, default=7200, help="Max runtime in seconds (default: 2h)")
     args = p.parse_args()
 
     root = find_openclaw_root()
     factory = f"{root}/workspace-factory"
+
+    # Resolve notification target: use --notify-* if provided, otherwise fall back to --chat-id/--topic-id
+    notify_chat = args.notify_chat_id or args.chat_id
+    notify_topic = args.notify_topic_id or args.topic_id
 
     # Validation
     if args.action in ("create", "edit", "install") and not args.agent_id:
@@ -231,6 +220,8 @@ def main():
             "workspace": workspace,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
+            "notify_chat_id": notify_chat,
+            "notify_topic_id": notify_topic,
             "test_cmd": args.test_cmd,
         }
     elif args.action == "edit":
@@ -241,6 +232,8 @@ def main():
             "prompts_dir": args.prompts_dir,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
+            "notify_chat_id": notify_chat,
+            "notify_topic_id": notify_topic,
             "test_cmd": args.test_cmd,
         }
         workspace = f"{root}/workspace-{args.agent_id}"
@@ -253,6 +246,8 @@ def main():
             "repo_url": args.repo_url,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
+            "notify_chat_id": notify_chat,
+            "notify_topic_id": notify_topic,
         }
         workspace = f"{root}/workspace-{args.agent_id}"
     else:
@@ -342,7 +337,7 @@ def main():
     except FileNotFoundError:
         msg = "❌ 'lobster' CLI not found. Install: npm install -g @clawdbot/lobster"
         log(msg)
-        notify(args.chat_id, args.topic_id, msg)
+        notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
         progress["error"] = "lobster CLI not found"
         write_progress(root, progress)
@@ -363,7 +358,7 @@ def main():
         if current_step and current_step != last_step:
             label = STEP_LABELS.get(current_step, f"📋 {current_step}")
             log(f"{label} started ({elapsed}s)")
-            notify(args.chat_id, args.topic_id, f"{label} started... ({elapsed}s elapsed)")
+            notify(notify_chat, notify_topic, f"{label} started... ({elapsed}s elapsed)")
 
             # Report completion of previous step
             if last_step:
@@ -405,7 +400,7 @@ def main():
             proc.kill()
             msg = f"⏰ TIMEOUT: Pipeline killed after {args.timeout}s"
             log(msg)
-            notify(args.chat_id, args.topic_id, msg)
+            notify(notify_chat, notify_topic, msg)
             return 124
 
         time.sleep(5)
@@ -420,7 +415,7 @@ def main():
         msg = f"❌ <b>Pipeline failed</b> (exit {proc.returncode}, {elapsed}s)\n<pre>{error_detail}</pre>"
         log(f"FAILED: exit {proc.returncode} after {elapsed}s")
         log(f"  {error_detail}")
-        notify(args.chat_id, args.topic_id, msg)
+        notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
         progress["error"] = error_detail
         progress["elapsed_seconds"] = elapsed
@@ -437,7 +432,7 @@ def main():
         msg = f"✅ <b>Pipeline completed</b> ({elapsed}s)"
         if ws_info.get("py_files"):
             msg += f"\n{ws_info['py_files']} Python files, {ws_info.get('test_files', 0)} test files"
-        notify(args.chat_id, args.topic_id, msg)
+        notify(notify_chat, notify_topic, msg)
         print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}))
         return 0
 
@@ -453,7 +448,7 @@ def main():
                 f"Reply YES to approve or NO to reject."
             )
             log(f"APPROVAL NEEDED after {elapsed}s")
-            notify(args.chat_id, args.topic_id, msg)
+            notify(notify_chat, notify_topic, msg)
             progress["status"] = "approval_needed"
             progress["resume_token"] = token
             progress["elapsed_seconds"] = elapsed
@@ -468,7 +463,7 @@ def main():
             if ws_info.get("py_files"):
                 msg += f"\n📦 {ws_info['py_files']} Python files, {ws_info.get('test_files', 0)} test files"
             log(f"SUCCESS after {elapsed}s")
-            notify(args.chat_id, args.topic_id, msg)
+            notify(notify_chat, notify_topic, msg)
             progress["status"] = "completed"
             progress["elapsed_seconds"] = elapsed
             progress["workspace_stats"] = ws_info
@@ -478,7 +473,7 @@ def main():
         error = result.get("error", {}).get("message", "unknown")
         msg = f"❌ <b>Pipeline failed</b>: {error} ({elapsed}s)"
         log(f"PIPELINE FAILED: {error}")
-        notify(args.chat_id, args.topic_id, msg)
+        notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
         progress["error"] = error
         progress["elapsed_seconds"] = elapsed

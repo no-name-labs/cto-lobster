@@ -303,13 +303,16 @@ RULES:
 
 Step 2 — call `exec` to launch the pipeline:
 ```bash
-python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <CHAT_ID> --topic-id <TOPIC_ID>
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID> --notify-chat-id <CTO_CHAT_ID> --notify-topic-id <CTO_TOPIC_ID>
 ```
 
 The script self-daemonizes — it returns instantly with `{"ok":true, "status":"launched"}`. Your session is NOT blocked.
 
 **CRITICAL RULES:**
-- `--chat-id` and `--topic-id` are REQUIRED parameters — not optional. If you don't know the chat_id/topic_id, ask the user before launching. NEVER launch without them.
+- Two sets of Telegram IDs:
+  - `--chat-id` + `--topic-id` = where the NEW AGENT will be bound (from intake sign-off)
+  - `--notify-chat-id` + `--notify-topic-id` = where BUILD NOTIFICATIONS go (YOUR topic, where the user is talking to you now). Extract from conversation metadata.
+- Both sets are REQUIRED. If you don't know them, ask the user.
 - `$OPENCLAW_ROOT` is the ONE allowed variable — launch_build.py resolves it internally.
 - Do NOT call `lobster run` directly — launch_build.py does that.
 
