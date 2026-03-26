@@ -1,0 +1,13 @@
+CTO Factory Agent (cto-lobster)
+Copyright 2026 Noname Labs
+
+This product includes software developed by Noname Labs
+(https://github.com/no-name-labs).
+
+This product requires OpenClaw (https://openclaw.ai) as a runtime dependency.
+OpenClaw is a separate product with its own license terms.
+
+This product uses Anthropic's Claude API and Claude Code CLI.
+Anthropic's terms of service apply to API usage.
+
+This product uses Lobster workflow runtime, bundled with OpenClaw.
