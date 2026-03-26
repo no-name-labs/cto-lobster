@@ -22,6 +22,12 @@ with open(config_path, "w") as f:
 print("[OK] cto-factory removed from config")
 PYEOF
 
+# Remove build monitor cron
+if crontab -l 2>/dev/null | grep -q "build_monitor.sh"; then
+  crontab -l 2>/dev/null | grep -v "build_monitor.sh" | crontab -
+  log_info "Build monitor cron removed"
+fi
+
 # Restart gateway
 log_info "Restarting gateway..."
 if [ "$(uname)" = "Darwin" ]; then

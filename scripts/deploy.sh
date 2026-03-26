@@ -161,6 +161,20 @@ else
   log_warn "Gateway probe failed. You may need to start it manually."
 fi
 
+# ── Build monitor cron ─────────────────────────────────────
+
+MONITOR_SCRIPT="${WORKSPACE_DEST}/scripts/build_monitor.sh"
+if [ -f "${MONITOR_SCRIPT}" ]; then
+  chmod +x "${MONITOR_SCRIPT}"
+  CRON_LINE="*/5 * * * * OPENCLAW_HOME=${OPENCLAW_HOME} ${MONITOR_SCRIPT} >/dev/null 2>&1"
+  if ! crontab -l 2>/dev/null | grep -q "build_monitor.sh"; then
+    (crontab -l 2>/dev/null || true; echo "${CRON_LINE}") | crontab -
+    log_info "Build monitor cron installed (every 5 min)"
+  else
+    log_info "Build monitor cron already installed"
+  fi
+fi
+
 # ── Done ───────────────────────────────────────────────────
 
 log_info "CTO Factory deployed successfully!"

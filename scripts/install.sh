@@ -404,6 +404,17 @@ PYEOF
   local files
   files="$(find "$dest" -type f | wc -l | tr -d ' ')"
   info "CTO deployed ($files files)"
+
+  # Install build monitor cron
+  local monitor="$dest/scripts/build_monitor.sh"
+  if [ -f "$monitor" ]; then
+    chmod +x "$monitor"
+    local cron_line="*/5 * * * * OPENCLAW_HOME=$OPENCLAW_HOME $monitor >/dev/null 2>&1"
+    if ! crontab -l 2>/dev/null | grep -q "build_monitor.sh"; then
+      (crontab -l 2>/dev/null || true; echo "$cron_line") | crontab -
+      info "Build monitor cron installed (every 5 min)"
+    fi
+  fi
 }
 
 # ── Stage 7: Validate + Restart ─────────────────────────────
