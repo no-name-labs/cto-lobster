@@ -228,6 +228,46 @@ def main():
         if not pd.is_dir():
             raise SystemExit(f"Prompts dir not found: {args.prompts_dir}")
 
+    # ── PROMPT FILE GATE ──────────────────────────────────────
+    # Validate ALL required prompt files exist BEFORE launching pipeline.
+    # If CTO forgot SMOKE or VERIFY, this blocks and returns a clear error.
+    # CTO sees the error, writes the missing files, and retries.
+    if args.action == "create" and args.prompts_dir:
+        pd = Path(args.prompts_dir)
+        t_files = sorted(pd.glob("T*.txt"))
+        if not t_files:
+            print(json.dumps({"ok": False, "error": "BLOCKED: No T*.txt prompt files found. Write at least T1.txt."}))
+            return 1
+        required = {"RESEARCH.txt": False, "SMOKE.txt": True, "VERIFY.txt": True}
+        missing = []
+        for fname, mandatory in required.items():
+            if not (pd / fname).exists():
+                if mandatory:
+                    missing.append(fname)
+                else:
+                    log(f"Optional file missing: {fname} (skipped)")
+        if missing:
+            print(json.dumps({
+                "ok": False,
+                "error": f"BLOCKED: Missing required prompt files: {', '.join(missing)}. Write them to {args.prompts_dir}/ and retry.",
+                "missing": missing,
+                "existing": [f.name for f in pd.glob("*.txt")],
+            }))
+            return 1
+        log(f"Prompt gate passed: {len(t_files)} T-files + SMOKE + VERIFY")
+
+    elif args.action == "edit" and args.prompts_dir:
+        pd = Path(args.prompts_dir)
+        if not (pd / "FIX.txt").exists():
+            print(json.dumps({"ok": False, "error": "BLOCKED: FIX.txt required for edit pipeline."}))
+            return 1
+
+    elif args.action == "install" and args.prompts_dir:
+        pd = Path(args.prompts_dir)
+        if not (pd / "INSTALL.txt").exists():
+            print(json.dumps({"ok": False, "error": "BLOCKED: INSTALL.txt required for install pipeline."}))
+            return 1
+
     # Build lobster command
     if args.action == "create":
         lobster_file = f"{factory}/lobster/create-agent.lobster"
