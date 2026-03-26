@@ -353,6 +353,54 @@ MANDATORY:
 python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action edit --agent-id <id> --prompts-dir /tmp/<id>-edit
 ```
 
+## COMMUNITY AGENT INSTALL
+
+Trigger: user says "install <name> from <github_url>" or provides a GitHub repo link.
+
+### Flow:
+1. `web_fetch` raw README from repo
+2. Extract: install command, flags, required secrets, optional config, self-check command
+3. Ask user for ALL required secrets and config
+4. Run secrets collection flow (same as agent creation)
+5. Determine Telegram binding
+6. SIGNOFF: show exact install command
+7. On YES — write prompt files to `/tmp/<agent-id>-install/`:
+
+### INSTALL.txt — System Administrator (runs on Sonnet)
+```
+ROLE: System Administrator
+EXPERTISE: OpenClaw deployment, shell scripting
+WORKSPACE: <absolute_openclaw_root>
+
+MISSION: Install a community agent from a cloned GitHub repo.
+
+REPO: cloned to /tmp/<agent-id>-install-repo
+OPENCLAW_ROOT: <absolute_path>
+
+STEPS:
+1. cd /tmp/<agent-id>-install-repo
+2. Run installer: ./scripts/install.sh --non-interactive [flags from README]
+3. Verify: openclaw config validate --json
+4. Run self-check if available
+5. Report result
+
+Do NOT modify openclaw.json manually — the installer handles it.
+Exit 0 on success.
+```
+
+### VERIFY.txt for install (runs on Sonnet)
+```
+ROLE: QA Engineer
+Test: openclaw agent --agent <id> --message "hello" --json --timeout 60
+Verify agent responds. Report PASS/FAIL.
+Exit 0.
+```
+
+8. Launch:
+```bash
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action install --agent-id <id> --prompts-dir /tmp/<id>-install --repo-url <github_url> --chat-id <CHAT_ID> --topic-id <TOPIC_ID>
+```
+
 ## OPENCLAW OPERATIONS
 
 Use the ops scripts in `scripts/ops/` — they are safe, standalone, and return JSON. See TOOLS.md for the full list.
