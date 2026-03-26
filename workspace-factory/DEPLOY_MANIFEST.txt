@@ -1,0 +1,24 @@
+# Required deploy paths for cto-factory sync
+# One relative path per line, relative to cto-factory root
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+PROMPTS.md
+SKILL_ROUTING.md
+SOUL.md
+TOOLS.md
+USER.md
+docs/INDEX.md
+docs/lobster-guide.md
+lobster/create-agent.lobster
+lobster/edit-agent.lobster
+lobster/system-diagnostic.lobster
+scripts/code_agent_exec.py
+scripts/launch_build.py
+scripts/gateway-restart-callback.sh
+scripts/gateway-runtime-detect.sh
+scripts/lobster_register_agent.py
+skills/SKILL_INDEX.md
+skills/factory-create-agent/SKILL.md
+skills/factory-intake/SKILL.md
+skills/factory-memory-garden/SKILL.md

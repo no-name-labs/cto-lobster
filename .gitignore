@@ -1,0 +1,41 @@
+# Secrets and credentials
+.env
+.env.*
+*.env
+credentials/
+secrets/
+**/auth-profiles.json
+**/models.json
+
+# Runtime state
+logs/
+cron/
+delivery-queue/
+devices/
+telegram/
+memory/
+subagents/
+**/.cto-brain/
+**/.openclaw/
+**/sessions/
+**/sessions.json
+*.jsonl.reset.*
+*.jsonl.deleted.*
+**/runner.log
+**/*-state.json
+
+# Browser / UI
+browser/
+canvas/
+completions/
+
+# Build artifacts
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

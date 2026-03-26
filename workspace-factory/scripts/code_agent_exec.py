@@ -1,0 +1,775 @@
+#!/usr/bin/env python3
+"""Guarded wrapper around code agent CLI (codex or claude) with retry and long-running timeout support."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Callable
+from datetime import datetime, timezone
+from pathlib import Path
+
+DEFAULT_CODEX_MODEL = "gpt-5.3-codex"
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+MODEL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def detect_code_agent() -> str:
+    """Detect which code agent CLI is available. Returns 'codex' or 'claude'."""
+    env_cli = os.getenv("OPENCLAW_CODE_AGENT_CLI", "").strip().lower()
+    if env_cli in ("codex", "claude"):
+        return env_cli
+    # Auto-detect: prefer codex if available
+    import shutil
+    if shutil.which("codex"):
+        return "codex"
+    if shutil.which("claude"):
+        return "claude"
+    return "codex"  # fallback
+
+
+def parse_args() -> argparse.Namespace:
+    default_state = (
+        Path(__file__).resolve().parent.parent / ".cto-brain" / "runtime" / "codex_failure_guard.json"
+    )
+    p = argparse.ArgumentParser(description="Run code agent (codex or claude) with retries and timeout")
+    p.add_argument("--agent", choices=["codex", "claude", "auto"], default="auto",
+                    help="Code agent CLI to use. 'auto' detects from OPENCLAW_CODE_AGENT_CLI env or PATH.")
+    p.add_argument("--workdir", required=True, help="Project root passed to code agent")
+    p.add_argument("--model", default=None, help="Model to use (default: auto per agent type)")
+    p.add_argument("--prompt-file", help="Path to file with prompt text")
+    p.add_argument("--prompt", help="Inline prompt text")
+    p.add_argument("--retries", type=int, default=3, help="Max attempts")
+    p.add_argument("--timeout", type=int, default=10800, help="Per-attempt timeout (seconds)")
+    p.add_argument("--backoff", type=float, default=2.0, help="Base backoff seconds")
+    p.add_argument(
+        "--heartbeat-interval",
+        type=int,
+        default=75,
+        help="Emit 'still running' heartbeat every N seconds while codex exec is active",
+    )
+    p.add_argument("--reasoning-effort", choices=["none", "minimal", "low", "medium", "high"], default=None)
+    p.add_argument("--failure-budget", type=int, default=3, help="Consecutive failed runs allowed per session")
+    p.add_argument(
+        "--failure-budget-ttl",
+        type=int,
+        default=7200,
+        help="Seconds after last failure before consecutive_failures auto-resets (default 2h; 0 disables TTL)",
+    )
+    p.add_argument("--session-id", default=os.getenv("CTO_SESSION_ID", "default"), help="Session key for failure budget")
+    p.add_argument("--state-file", default=str(default_state), help="Path to persistent failure counter JSON")
+    p.add_argument(
+        "--callback-agent-id",
+        default=os.getenv("CTO_AGENT_ID"),
+        help="Agent id to wake after command completion",
+    )
+    p.add_argument(
+        "--callback-session-id",
+        default=os.getenv("CTO_SESSION_ID") or os.getenv("OPENCLAW_SESSION_ID"),
+        help="Session id to wake after command completion",
+    )
+    p.add_argument("--callback-timeout", type=int, default=120, help="Timeout for callback command (seconds)")
+    p.add_argument(
+        "--sandbox",
+        choices=["auto", "workspace-write", "danger-full-access"],
+        default="danger-full-access",
+        help="Codex sandbox mode. Default is danger-full-access for full system access on isolated servers.",
+    )
+    p.add_argument(
+        "--allow-sandbox-escalation",
+        action="store_true",
+        help="Explicitly allow sandbox escalation to danger-full-access on landlock failure when sandbox is auto",
+    )
+    p.add_argument(
+        "--callback-message",
+        help="Optional callback message template. Supports {status}, {exit_code}, {used_attempts}, {session_id}.",
+    )
+    p.add_argument(
+        "--session-heartbeat-interval",
+        type=int,
+        default=300,
+        help="Send a live heartbeat message to the CTO session every N seconds while codex runs (0 disables; default 5m).",
+    )
+    return p.parse_args()
+
+
+def load_prompt(args: argparse.Namespace) -> str:
+    if args.prompt_file:
+        return Path(args.prompt_file).read_text(encoding="utf-8")
+    if args.prompt:
+        return args.prompt
+    data = sys.stdin.read()
+    if data.strip():
+        return data
+    raise SystemExit("No prompt provided. Use --prompt, --prompt-file, or stdin.")
+
+
+def build_cmd(args: argparse.Namespace) -> list[str]:
+    agent_type = args.agent if args.agent != "auto" else detect_code_agent()
+    if agent_type == "claude":
+        cmd = [
+            "claude",
+            "--print",
+            "--output-format", "text",
+            "--dangerously-skip-permissions",
+            "--model", args.model,
+        ]
+        # claude --print reads prompt from stdin
+        return cmd
+    else:
+        # codex
+        sandbox_mode = "danger-full-access" if args.sandbox == "auto" else args.sandbox
+        cmd = [
+            "codex",
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            sandbox_mode,
+            "--cd",
+            args.workdir,
+            "--model",
+            args.model,
+        ]
+        if args.reasoning_effort:
+            cmd.extend(["-c", f"reasoning_effort=\"{args.reasoning_effort}\""])
+        cmd.append("-")
+        return cmd
+
+
+def resolve_default_model(agent_type: str, requested: str | None) -> str:
+    if requested:
+        return requested
+    return DEFAULT_CLAUDE_MODEL if agent_type == "claude" else DEFAULT_CODEX_MODEL
+
+
+def normalize_model_id(requested_model: str, agent_type: str = "codex") -> tuple[str, str | None]:
+    default = DEFAULT_CLAUDE_MODEL if agent_type == "claude" else DEFAULT_CODEX_MODEL
+    requested = (requested_model or "").strip()
+    if not requested:
+        return default, f"Model id is empty; falling back to '{default}'."
+
+    normalized = requested.split("/")[-1].strip()
+    warning_parts: list[str] = []
+
+    if not normalized or not MODEL_TOKEN_RE.match(normalized):
+        warning_parts.append(f"invalid model token '{normalized}'")
+        normalized = default
+        warning_parts.append(f"fallback to '{default}'")
+
+    warning = "; ".join(warning_parts) if warning_parts else None
+    return normalized, warning
+
+
+def is_retryable(stderr: str, stdout: str, returncode: int) -> bool:
+    text = f"{stdout}\n{stderr}".lower()
+    retry_markers = [
+        "stream disconnected before completion",
+        "error sending request for url",
+        "connection reset",
+        "timed out",
+        "temporarily unavailable",
+        "429",
+    ]
+    return returncode != 0 and any(m in text for m in retry_markers)
+
+
+def is_landlock_sandbox_failure(stderr: str, stdout: str, returncode: int) -> bool:
+    if returncode == 0:
+        return False
+    text = f"{stdout}\n{stderr}".lower()
+    markers = [
+        "landlockrestrict",
+        "landlock",
+        "sandbox restriction",
+        "permission denied",
+        "operation not permitted",
+    ]
+    # Keep it strict: only treat as sandbox escalation candidate if landlock/sandbox is present.
+    return ("landlock" in text or "sandbox" in text) and any(m in text for m in markers)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def normalize_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+class _SafeFormatDict(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def render_callback_message(template: str | None, context: dict) -> str:
+    default_template = (
+        "CODE_AGENT_DONE status={status} exit_code={exit_code} used_attempts={used_attempts} session_id={session_id}. "
+        "Resume task now: evaluate this result, run tests, run smoke, and report outcome to the user."
+    )
+    text = template or default_template
+    try:
+        return text.format_map(_SafeFormatDict(context))
+    except Exception:
+        return default_template.format_map(_SafeFormatDict(context))
+
+
+def session_exists(agent_id: str, session_id: str) -> bool:
+    try:
+        proc = subprocess.run(
+            ["openclaw", "sessions", "--agent", agent_id, "--json"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            return False
+        payload = json.loads(proc.stdout or "{}")
+        sessions = payload.get("sessions") if isinstance(payload, dict) else None
+        if not isinstance(sessions, list):
+            return False
+        for item in sessions:
+            if isinstance(item, dict) and str(item.get("sessionId", "")).strip() == session_id:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def latest_session_id(agent_id: str) -> str | None:
+    agent = normalize_optional(agent_id)
+    if not agent:
+        return None
+    try:
+        proc = subprocess.run(
+            ["openclaw", "sessions", "--agent", agent, "--json"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout or "{}")
+        sessions = payload.get("sessions") if isinstance(payload, dict) else None
+        if not isinstance(sessions, list):
+            return None
+        ordered = sorted(
+            [item for item in sessions if isinstance(item, dict)],
+            key=lambda item: int(item.get("updatedAt") or 0),
+            reverse=True,
+        )
+        for item in ordered:
+            sid = normalize_optional(item.get("sessionId"))
+            if sid:
+                return sid
+        return None
+    except Exception:
+        return None
+
+
+def send_callback(
+    *,
+    callback_agent_id: str | None,
+    callback_session_id: str | None,
+    callback_timeout: int,
+    callback_message_template: str | None,
+    context: dict,
+) -> dict:
+    agent_id = normalize_optional(callback_agent_id) or "cto-factory"
+    session_id = normalize_optional(callback_session_id)
+    auto_resolved = False
+    auto_reason = None
+    if not session_id:
+        session_id = (
+            normalize_optional(os.getenv("CTO_SESSION_ID"))
+            or normalize_optional(os.getenv("OPENCLAW_SESSION_ID"))
+            or latest_session_id(agent_id)
+        )
+        if session_id:
+            auto_resolved = True
+            auto_reason = "env_or_latest_session"
+    if not agent_id or not session_id:
+        return {
+            "enabled": False,
+            "sent": False,
+            "reason": "callback_not_configured",
+            "agent_id": agent_id,
+            "session_id": session_id,
+        }
+    if not session_exists(agent_id, session_id):
+        fallback_session = latest_session_id(agent_id)
+        if fallback_session and fallback_session != session_id and session_exists(agent_id, fallback_session):
+            session_id = fallback_session
+            auto_resolved = True
+            auto_reason = "latest_session_fallback"
+        else:
+            return {
+                "enabled": True,
+                "sent": False,
+                "reason": "callback_session_not_found",
+                "agent_id": agent_id,
+                "session_id": session_id,
+            }
+
+    callback_timeout = max(30, callback_timeout)
+    message = render_callback_message(callback_message_template, context)
+    cmd = [
+        "openclaw",
+        "agent",
+        "--agent",
+        agent_id,
+        "--session-id",
+        session_id,
+        "--message",
+        message,
+        "--json",
+        "--timeout",
+        str(callback_timeout),
+    ]
+    try:
+        exec_timeout = max(35, callback_timeout + 15)
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False, timeout=exec_timeout)
+        return {
+            "enabled": True,
+            "sent": proc.returncode == 0,
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "timeout_seconds": callback_timeout,
+            "exit_code": proc.returncode,
+            "stdout_preview": (proc.stdout or "")[:800],
+            "stderr_preview": (proc.stderr or "")[:800],
+            "message": message,
+            "sent_at": utc_now(),
+            "auto_resolved_session": auto_resolved,
+            "auto_resolve_reason": auto_reason,
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "enabled": True,
+            "sent": False,
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "timeout_seconds": callback_timeout,
+            "exit_code": 124,
+            "stdout_preview": (exc.stdout or "")[:800],
+            "stderr_preview": "callback_timeout_expired",
+            "message": message,
+            "sent_at": utc_now(),
+            "reason": "callback_timeout_expired",
+            "auto_resolved_session": auto_resolved,
+            "auto_resolve_reason": auto_reason,
+        }
+    except Exception as exc:  # pragma: no cover - defensive branch
+        return {
+            "enabled": True,
+            "sent": False,
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "timeout_seconds": callback_timeout,
+            "exit_code": 1,
+            "stdout_preview": "",
+            "stderr_preview": str(exc),
+            "message": message,
+            "sent_at": utc_now(),
+            "auto_resolved_session": auto_resolved,
+            "auto_resolve_reason": auto_reason,
+        }
+
+
+def send_session_heartbeat(agent_id: str | None, session_id: str | None, elapsed: int, attempt: int) -> None:
+    """Fire-and-forget: send a live heartbeat message to the CTO session. Never raises."""
+    agent = normalize_optional(agent_id)
+    session = normalize_optional(session_id)
+    if not agent or not session:
+        return
+    message = (
+        f"CODE_AGENT_HEARTBEAT attempt={attempt} elapsed={elapsed}s — code agent is still running. "
+        "Resume task as soon as CODE_AGENT_DONE arrives."
+    )
+    try:
+        subprocess.run(
+            ["openclaw", "agent", "--agent", agent, "--session-id", session, "--message", message, "--json"],
+            text=True, capture_output=True, check=False, timeout=20,
+        )
+    except Exception:
+        pass
+
+
+def load_state(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_state(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def get_session_record(state: dict, session_id: str) -> dict:
+    return state.get(session_id, {"consecutive_failures": 0})
+
+
+def mark_success(path: Path, state: dict, session_id: str) -> None:
+    state[session_id] = {
+        "consecutive_failures": 0,
+        "last_success_at": utc_now(),
+        "last_failure_at": state.get(session_id, {}).get("last_failure_at"),
+    }
+    save_state(path, state)
+
+
+def mark_failure(path: Path, state: dict, session_id: str) -> int:
+    prev = int(state.get(session_id, {}).get("consecutive_failures", 0))
+    current = prev + 1
+    state[session_id] = {
+        "consecutive_failures": current,
+        "last_failure_at": utc_now(),
+        "last_success_at": state.get(session_id, {}).get("last_success_at"),
+    }
+    save_state(path, state)
+    return current
+
+
+def _pipe_reader(pipe, sink: list[str]) -> None:
+    try:
+        for chunk in iter(lambda: pipe.read(4096), ""):
+            if not chunk:
+                break
+            sink.append(chunk)
+    finally:
+        try:
+            pipe.close()
+        except Exception:
+            pass
+
+
+def run_with_heartbeat(
+    cmd: list[str],
+    prompt: str,
+    timeout: int,
+    heartbeat_interval: int,
+    attempt_index: int,
+    on_heartbeat: "Callable[[int, int], None] | None" = None,
+) -> dict:
+    started = time.time()
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    out_chunks: list[str] = []
+    err_chunks: list[str] = []
+    out_thread = threading.Thread(target=_pipe_reader, args=(proc.stdout, out_chunks), daemon=True)
+    err_thread = threading.Thread(target=_pipe_reader, args=(proc.stderr, err_chunks), daemon=True)
+    out_thread.start()
+    err_thread.start()
+
+    if proc.stdin is not None:
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+
+    heartbeats = 0
+    next_heartbeat_at = started + max(1, heartbeat_interval)
+    timed_out = False
+
+    while proc.poll() is None:
+        now = time.time()
+        if now - started >= timeout:
+            timed_out = True
+            proc.kill()
+            break
+        if now >= next_heartbeat_at:
+            elapsed = int(now - started)
+            heartbeats += 1
+            print(
+                f"[code-agent] still running attempt={attempt_index} elapsed={elapsed}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            if on_heartbeat is not None:
+                try:
+                    on_heartbeat(elapsed, heartbeats)
+                except Exception:
+                    pass
+            next_heartbeat_at = now + max(1, heartbeat_interval)
+        time.sleep(1)
+
+    returncode = 124 if timed_out else proc.wait()
+    out_thread.join(timeout=2)
+    err_thread.join(timeout=2)
+    stdout = "".join(out_chunks)
+    stderr = "".join(err_chunks)
+    if timed_out:
+        stderr = f"{stderr}\nTIMEOUT".strip()
+
+    return {
+        "exit_code": returncode,
+        "duration_seconds": round(time.time() - started, 3),
+        "stdout": stdout,
+        "stderr": stderr,
+        "heartbeats": heartbeats,
+        "timed_out": timed_out,
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    # Allow long-running Codex jobs (multi-hour) without clamping upper bounds.
+    # Some legacy callers still pass --timeout 900; treat that as too small and lift to a long floor.
+    args.retries = max(1, args.retries)
+    prompt = load_prompt(args)
+    # Resolve agent type
+    agent_type = args.agent if args.agent != "auto" else detect_code_agent()
+    args.agent = agent_type
+    # Resolve model
+    args.model = resolve_default_model(agent_type, args.model)
+    requested_model = args.model
+    resolved_model, model_warning = normalize_model_id(requested_model, agent_type)
+    args.model = resolved_model
+    if model_warning:
+        print(f"[code-agent] model fallback: {model_warning}", file=sys.stderr, flush=True)
+    print(f"[code-agent] using {agent_type} with model {resolved_model}", file=sys.stderr, flush=True)
+    # For claude, cd into workdir before running
+    if agent_type == "claude":
+        os.chdir(args.workdir)
+    cmd = build_cmd(args)
+    current_sandbox = "danger-full-access" if args.sandbox == "auto" else args.sandbox
+    attempts: list[dict] = []
+    state_path = Path(args.state_file).resolve()
+    state = load_state(state_path)
+    session_id = str(args.session_id or "default")
+    session_record = get_session_record(state, session_id)
+    previous_failures = int(session_record.get("consecutive_failures", 0))
+
+    # Auto-reset if last failure is older than TTL.
+    if previous_failures > 0 and args.failure_budget_ttl > 0:
+        last_failure_at = session_record.get("last_failure_at")
+        if last_failure_at:
+            try:
+                last_fail_dt = datetime.fromisoformat(last_failure_at.replace("Z", "+00:00"))
+                age_seconds = (datetime.now(timezone.utc) - last_fail_dt).total_seconds()
+                if age_seconds >= args.failure_budget_ttl:
+                    print(
+                        f"[code-agent] failure budget TTL expired ({int(age_seconds)}s >= {args.failure_budget_ttl}s);"
+                        f" resetting consecutive_failures={previous_failures} -> 0",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    session_record["consecutive_failures"] = 0
+                    state[session_id] = session_record
+                    save_state(state_path, state)
+                    previous_failures = 0
+            except Exception:
+                pass  # malformed timestamp — leave state as-is
+
+    if previous_failures >= max(args.failure_budget, 1):
+        callback_context = {
+            "status": "blocked",
+            "exit_code": 2,
+            "used_attempts": 0,
+            "session_id": session_id,
+            "consecutive_failures": previous_failures,
+            "failure_budget": max(args.failure_budget, 1),
+        }
+        callback = send_callback(
+            callback_agent_id=args.callback_agent_id,
+            callback_session_id=args.callback_session_id,
+            callback_timeout=args.callback_timeout,
+            callback_message_template=args.callback_message,
+            context=callback_context,
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "blocked": True,
+                    "reason": "failure_budget_exceeded",
+                    "session_id": session_id,
+                    "consecutive_failures": previous_failures,
+                    "failure_budget": max(args.failure_budget, 1),
+                    "hint": "Repeated Codex transport failures reached budget. Ask user whether to continue retry burn.",
+                    "callback": callback,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 2
+
+    for idx in range(1, max(args.retries, 1) + 1):
+        attempt = {
+            "attempt": idx,
+            "command": " ".join(shlex.quote(part) for part in cmd),
+            "sandbox": current_sandbox,
+            "timeout_seconds": args.timeout,
+            "model_requested": requested_model,
+            "model_resolved": resolved_model,
+            "model_warning": model_warning,
+        }
+        try:
+            session_hb_interval = max(1, args.session_heartbeat_interval) if args.session_heartbeat_interval > 0 else 0
+            _hb_counter = [0]
+
+            def _on_heartbeat(elapsed: int, heartbeat_num: int) -> None:
+                if session_hb_interval == 0:
+                    return
+                _hb_counter[0] += 1
+                # Fire a session message on every Nth stderr heartbeat so session cadence ≈ session_hb_interval.
+                hb_ratio = max(1, session_hb_interval // max(1, args.heartbeat_interval))
+                if _hb_counter[0] % hb_ratio == 0:
+                    send_session_heartbeat(args.callback_agent_id, args.callback_session_id, elapsed, idx)
+
+            run_result = run_with_heartbeat(
+                cmd=cmd,
+                prompt=prompt,
+                timeout=args.timeout,
+                heartbeat_interval=max(1, args.heartbeat_interval),
+                attempt_index=idx,
+                on_heartbeat=_on_heartbeat,
+            )
+            attempt.update(run_result)
+            attempts.append(attempt)
+
+            exit_code = int(run_result["exit_code"])
+            # Treat exit code 0 as success.
+            # Also treat non-zero as success if code agent produced output
+            # (claude/codex sometimes exit 1 despite completing the work).
+            stdout_text = str(run_result.get("stdout", ""))
+            stderr_text = str(run_result.get("stderr", ""))
+            has_output = len(stdout_text) > 100 or len(stderr_text) > 200
+            if exit_code == 0 or (exit_code in (1, 124) and has_output and not is_retryable(stderr_text, stdout_text, exit_code)):
+                mark_success(state_path, state, session_id)
+                callback_context = {
+                    "status": "completed",
+                    "exit_code": 0,
+                    "used_attempts": idx,
+                    "session_id": session_id,
+                    "consecutive_failures_before": previous_failures,
+                    "model_requested": requested_model,
+                    "model_resolved": resolved_model,
+                }
+                callback = send_callback(
+                    callback_agent_id=args.callback_agent_id,
+                    callback_session_id=args.callback_session_id,
+                    callback_timeout=args.callback_timeout,
+                    callback_message_template=args.callback_message,
+                    context=callback_context,
+                )
+                print(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "attempts": attempts,
+                            "used_attempts": idx,
+                            "session_id": session_id,
+                            "consecutive_failures_before": previous_failures,
+                            "model_requested": requested_model,
+                            "model_resolved": resolved_model,
+                            "model_warning": model_warning,
+                            "callback": callback,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                return 0
+
+            if idx < args.retries and is_retryable(
+                str(run_result["stderr"]), str(run_result["stdout"]), int(run_result["exit_code"])
+            ):
+                time.sleep(args.backoff * idx)
+                continue
+
+            if (
+                args.sandbox == "auto"
+                and current_sandbox == "workspace-write"
+                and idx < args.retries
+                and args.allow_sandbox_escalation
+                and is_landlock_sandbox_failure(
+                    str(run_result["stderr"]), str(run_result["stdout"]), int(run_result["exit_code"])
+                )
+            ):
+                current_sandbox = "danger-full-access"
+                cmd = build_cmd(args)
+                # Replace sandbox arg value in command (build_cmd used auto default above).
+                if "--sandbox" in cmd:
+                    sidx = cmd.index("--sandbox")
+                    if sidx + 1 < len(cmd):
+                        cmd[sidx + 1] = current_sandbox
+                print(
+                    "[code-agent] detected Landlock sandbox failure; switching sandbox to danger-full-access",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(min(args.backoff * idx, 5.0))
+                continue
+
+            break
+        except Exception as exc:
+            attempt["exit_code"] = 1
+            attempt["duration_seconds"] = 0
+            attempt["stdout"] = ""
+            attempt["stderr"] = str(exc)
+            attempt["heartbeats"] = 0
+            attempt["timed_out"] = False
+            attempts.append(attempt)
+            break
+
+    consecutive_failures = mark_failure(state_path, state, session_id)
+    callback_context = {
+        "status": "failed",
+        "exit_code": 1,
+        "used_attempts": len(attempts),
+        "session_id": session_id,
+        "consecutive_failures": consecutive_failures,
+        "failure_budget": max(args.failure_budget, 1),
+        "model_requested": requested_model,
+        "model_resolved": resolved_model,
+    }
+    callback = send_callback(
+        callback_agent_id=args.callback_agent_id,
+        callback_session_id=args.callback_session_id,
+        callback_timeout=args.callback_timeout,
+        callback_message_template=args.callback_message,
+        context=callback_context,
+    )
+    print(
+        json.dumps(
+            {
+                "ok": False,
+                "attempts": attempts,
+                "used_attempts": len(attempts),
+                "session_id": session_id,
+                "consecutive_failures": consecutive_failures,
+                "failure_budget": max(args.failure_budget, 1),
+                "model_requested": requested_model,
+                "model_resolved": resolved_model,
+                "model_warning": model_warning,
+                "callback": callback,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
