@@ -179,9 +179,10 @@ def count_workspace_files(workspace: str) -> dict:
 
 def main():
     p = argparse.ArgumentParser(description="Launch lobster pipeline with progress reporting")
-    p.add_argument("--action", choices=["create", "edit", "diagnostic"], required=True)
-    p.add_argument("--agent-id", help="Agent ID (required for create/edit)")
+    p.add_argument("--action", choices=["create", "edit", "diagnostic", "install"], required=True)
+    p.add_argument("--agent-id", help="Agent ID (required for create/edit/install)")
     p.add_argument("--prompts-dir", help="Directory with prompt files")
+    p.add_argument("--repo-url", default="", help="GitHub repo URL (required for install)")
     p.add_argument("--chat-id", default="", help="Telegram chat ID for notifications")
     p.add_argument("--topic-id", default="", help="Telegram topic ID for notifications")
     p.add_argument("--test-cmd", default="python3 -m pytest -q", help="Test runner command")
@@ -192,10 +193,12 @@ def main():
     factory = f"{root}/workspace-factory"
 
     # Validation
-    if args.action in ("create", "edit") and not args.agent_id:
-        raise SystemExit("--agent-id required for create/edit")
-    if args.action in ("create", "edit") and not args.prompts_dir:
-        raise SystemExit("--prompts-dir required for create/edit")
+    if args.action in ("create", "edit", "install") and not args.agent_id:
+        raise SystemExit("--agent-id required for create/edit/install")
+    if args.action in ("create", "edit", "install") and not args.prompts_dir:
+        raise SystemExit("--prompts-dir required for create/edit/install")
+    if args.action == "install" and not args.repo_url:
+        raise SystemExit("--repo-url required for install")
     if args.prompts_dir:
         pd = Path(args.prompts_dir)
         if not pd.is_dir():
@@ -223,6 +226,17 @@ def main():
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
             "test_cmd": args.test_cmd,
+        }
+        workspace = f"{root}/workspace-{args.agent_id}"
+    elif args.action == "install":
+        lobster_file = f"{factory}/lobster/install-community-agent.lobster"
+        lobster_args = {
+            "agent_id": args.agent_id,
+            "openclaw_root": root,
+            "prompts_dir": args.prompts_dir,
+            "repo_url": args.repo_url,
+            "chat_id": args.chat_id,
+            "topic_id": args.topic_id,
         }
         workspace = f"{root}/workspace-{args.agent_id}"
     else:

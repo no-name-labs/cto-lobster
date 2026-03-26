@@ -224,6 +224,54 @@ MANDATORY:
 python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action edit --agent-id <id> --prompts-dir /tmp/<id>-edit
 ```
 
+## COMMUNITY AGENT INSTALL
+
+Trigger: user says "install <name> from <github_url>" or provides a GitHub repo link for an agent.
+
+**Flow:**
+1. `web_fetch` the raw README from repo (use `https://raw.githubusercontent.com/<owner>/<repo>/main/README.md`)
+2. Extract from README:
+   - Install command and its flags/arguments
+   - Required secrets (bot tokens, API keys, group IDs)
+   - Optional config (assignees, paths, features)
+   - Self-check / verify command (if available)
+3. Ask user for ALL required secrets and config values
+4. Run secrets collection flow (same as agent creation)
+5. Determine Telegram binding (same rule as agent creation — always ask)
+6. SIGNOFF: show the exact install command that will run
+7. On YES: write prompt files to `/tmp/<agent-id>-install/`:
+
+### INSTALL.txt — System Administrator
+```
+You are a System Administrator installing a community OpenClaw agent.
+
+REPO: <cloned to /tmp/<agent-id>-install-repo>
+OPENCLAW_ROOT: <absolute path>
+
+STEPS:
+1. cd /tmp/<agent-id>-install-repo
+2. Run: ./scripts/install.sh --non-interactive --telegram-bot-token "TOKEN" --telegram-group-id "GROUP" [other flags from README]
+3. Verify: openclaw config validate --json
+4. Run self-check if available: ./scripts/self-check.sh
+5. Report result.
+
+Do NOT modify openclaw.json manually — the installer handles it.
+Exit 0 on success.
+```
+
+### VERIFY.txt — QA Engineer (optional)
+```
+You are a QA Engineer verifying the installed agent.
+Test: openclaw agent --agent <id> --message "hello" --json
+Verify the agent responds. Report PASS/FAIL.
+Exit 0.
+```
+
+8. Launch:
+```bash
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action install --agent-id <id> --prompts-dir /tmp/<id>-install --repo-url <github_url> --chat-id <CHAT_ID> --topic-id <TOPIC_ID>
+```
+
 ## OPENCLAW OPERATIONS
 
 When the user asks for infrastructure changes (cron, gateway, tools, bindings, config), CTO does NOT execute them directly. CTO writes a task prompt for the code agent via `edit-agent.lobster` FIX.txt.

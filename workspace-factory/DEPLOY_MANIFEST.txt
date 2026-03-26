@@ -13,6 +13,7 @@ docs/lobster-guide.md
 lobster/create-agent.lobster
 lobster/edit-agent.lobster
 lobster/system-diagnostic.lobster
+lobster/install-community-agent.lobster
 scripts/code_agent_exec.py
 scripts/launch_build.py
 scripts/gateway-restart-callback.sh

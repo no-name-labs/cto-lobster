@@ -15,9 +15,8 @@
 |----------|------|---------|
 | Create agent | `lobster/create-agent.lobster` | Full build: research → T1-T6 → test → register → smoke → verify → approval |
 | Edit agent | `lobster/edit-agent.lobster` | Edit: fix → test → smoke → verify → approval |
+| Install community agent | `lobster/install-community-agent.lobster` | Install from GitHub repo: clone → install → validate → restart → smoke → verify |
 | System diagnostic | `lobster/system-diagnostic.lobster` | Read-only health check |
-
-No other lobster pipelines exist.
 
 ## State Machine
 

@@ -103,7 +103,31 @@ openclaw agent --agent cto-factory --message "Build me a weather alert agent"
 |----------|------|---------|
 | Create | `lobster/create-agent.lobster` | Build new agent from scratch |
 | Edit | `lobster/edit-agent.lobster` | Modify existing agent |
+| Install | `lobster/install-community-agent.lobster` | Install agent from GitHub repo |
 | Diagnostic | `lobster/system-diagnostic.lobster` | Read-only health check |
+
+### Installing Community Agents
+
+CTO can install agents published by the community (like [Notes Agent](https://github.com/smart-spine/openclaw-notes-agent)):
+
+```
+You: Install notes-agent from https://github.com/smart-spine/openclaw-notes-agent
+
+CTO: I read the README. This agent needs:
+     - Telegram bot token
+     - Telegram group ID
+     - Assignees list
+     Ready to install?
+
+You: YES
+
+CTO: 📥 Installing notes-agent...
+     📦 Repo cloned
+     ⚙️ Installer finished
+     🔄 Gateway restarted
+     ✅ Verified
+     🎉 notes-agent installed!
+```
 
 ### File Structure
 
