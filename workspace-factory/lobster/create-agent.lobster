@@ -41,7 +41,14 @@ steps:
         COUNT=$(ls "$LOBSTER_ARG_PROMPTS_DIR"/T*.txt 2>/dev/null | wc -l)
         [ "$COUNT" -eq 0 ] && echo "BLOCKED: no T*.txt prompt files in $LOBSTER_ARG_PROMPTS_DIR" >&2 && exit 1
         mkdir -p "$LOBSTER_ARG_WORKSPACE" 2>/dev/null || true
-        echo "{\"ok\":true,\"agent\":\"$LOBSTER_ARG_AGENT_ID\",\"task_count\":$COUNT}"
+        # Create build context directory for inter-step communication
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        rm -rf "$CTX"
+        mkdir -p "$CTX"
+        echo "# Build Context: $LOBSTER_ARG_AGENT_ID" > "$CTX/BUILD_DECISIONS.md"
+        echo "Each step appends its key decisions here." >> "$CTX/BUILD_DECISIONS.md"
+        echo "" >> "$CTX/BUILD_DECISIONS.md"
+        echo "{\"ok\":true,\"agent\":\"$LOBSTER_ARG_AGENT_ID\",\"task_count\":$COUNT,\"context_dir\":\"$CTX\"}"
       '
 
   - id: notify_start
@@ -55,7 +62,7 @@ steps:
         echo "{\"ok\":true}"
       '
 
-  # ── RESEARCH (optional) ───────────────────────────────────────
+  # ── RESEARCH (optional, uses opus for deep analysis) ──────────
   - id: research
     command: >
       bash -c '
@@ -64,8 +71,18 @@ steps:
           echo "{\"skipped\":true,\"reason\":\"no RESEARCH.txt\"}"
           exit 0
         fi
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 600 || true
-        echo '{"ok":true}'
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 600 --model claude-opus-4-6 || true
+        # Write context report
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ]; then
+          find "$LOBSTER_ARG_WORKSPACE" -name "research*" -o -name "RESEARCH*" 2>/dev/null | head -5 | while read f; do
+            [ -f "$f" ] && cp "$f" "$CTX/" 2>/dev/null || true
+          done
+          echo "## Research Phase" >> "$CTX/BUILD_DECISIONS.md"
+          echo "Research completed. See research files in context dir." >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: notify_research
@@ -77,14 +94,26 @@ steps:
         echo "{\"ok\":true}"
       '
 
-  # ── BUILD TASKS (T1-T6, each includes own tests+fixes) ────────
+  # ── BUILD TASKS (T1-T6, each reads previous context) ──────────
   - id: t1
     command: >
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T1.txt"
         [ ! -f "$PFILE" ] && echo "BLOCKED: T1.txt required" >&2 && exit 1
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
-        echo '{"ok":true}'
+        # T1 (Architect) uses opus — architectural decisions matter most
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 --model claude-opus-4-6 || true
+        # Write context report
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ]; then
+          echo "## T1: Architecture" >> "$CTX/BUILD_DECISIONS.md"
+          ls "$LOBSTER_ARG_WORKSPACE"/*.md 2>/dev/null | while read f; do echo "- $(basename $f)"; done >> "$CTX/BUILD_DECISIONS.md"
+          find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | while read f; do echo "- $(echo $f | sed "s|$LOBSTER_ARG_WORKSPACE/||")"; done >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+          # Copy architecture doc for next steps
+          [ -f "$LOBSTER_ARG_WORKSPACE/docs/ARCHITECTURE.md" ] && cp "$LOBSTER_ARG_WORKSPACE/docs/ARCHITECTURE.md" "$CTX/T1-ARCHITECTURE.md"
+          [ -f "$LOBSTER_ARG_WORKSPACE/IDENTITY.md" ] && cp "$LOBSTER_ARG_WORKSPACE/IDENTITY.md" "$CTX/T1-IDENTITY.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: notify_t1
@@ -102,8 +131,25 @@ steps:
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T2.txt"
         [ ! -f "$PFILE" ] && echo "{\"skipped\":true}" && exit 0
+        # Inject context from previous steps into prompt
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp)
+          cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"
+          echo "## CONTEXT FROM PREVIOUS STEPS (read before implementing):" >> "$TMPF"
+          cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          [ -f "$CTX/T1-ARCHITECTURE.md" ] && echo "" >> "$TMPF" && echo "## ARCHITECTURE (from T1):" >> "$TMPF" && cat "$CTX/T1-ARCHITECTURE.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
-        echo '{"ok":true}'
+        # Update context
+        if [ -d "$CTX" ]; then
+          echo "## T2: Core Logic" >> "$CTX/BUILD_DECISIONS.md"
+          find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" -newer "$CTX/BUILD_DECISIONS.md" 2>/dev/null | while read f; do echo "- new: $(echo $f | sed "s|$LOBSTER_ARG_WORKSPACE/||")"; done >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: notify_t2
@@ -121,8 +167,20 @@ steps:
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T3.txt"
         [ ! -f "$PFILE" ] && echo "{\"skipped\":true}" && exit 0
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp); cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"; echo "## CONTEXT FROM PREVIOUS STEPS:" >> "$TMPF"; cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          [ -f "$CTX/T1-ARCHITECTURE.md" ] && echo "" >> "$TMPF" && echo "## ARCHITECTURE:" >> "$TMPF" && cat "$CTX/T1-ARCHITECTURE.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
-        echo '{"ok":true}'
+        if [ -d "$CTX" ]; then
+          echo "## T3: Processing" >> "$CTX/BUILD_DECISIONS.md"
+          find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" -newer "$CTX/BUILD_DECISIONS.md" 2>/dev/null | while read f; do echo "- new: $(echo $f | sed "s|$LOBSTER_ARG_WORKSPACE/||")"; done >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: notify_t3
@@ -140,8 +198,19 @@ steps:
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T4.txt"
         [ ! -f "$PFILE" ] && echo "{\"skipped\":true}" && exit 0
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp); cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"; echo "## CONTEXT FROM PREVIOUS STEPS:" >> "$TMPF"; cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
-        echo '{"ok":true}'
+        if [ -d "$CTX" ]; then
+          echo "## T4: Delivery" >> "$CTX/BUILD_DECISIONS.md"
+          find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" -newer "$CTX/BUILD_DECISIONS.md" 2>/dev/null | while read f; do echo "- new: $(echo $f | sed "s|$LOBSTER_ARG_WORKSPACE/||")"; done >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: t5
@@ -149,8 +218,19 @@ steps:
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T5.txt"
         [ ! -f "$PFILE" ] && echo "{\"skipped\":true}" && exit 0
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp); cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"; echo "## CONTEXT FROM PREVIOUS STEPS:" >> "$TMPF"; cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
-        echo '{"ok":true}'
+        if [ -d "$CTX" ]; then
+          echo "## T5: Integration" >> "$CTX/BUILD_DECISIONS.md"
+          find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" -newer "$CTX/BUILD_DECISIONS.md" 2>/dev/null | while read f; do echo "- new: $(echo $f | sed "s|$LOBSTER_ARG_WORKSPACE/||")"; done >> "$CTX/BUILD_DECISIONS.md"
+          echo "" >> "$CTX/BUILD_DECISIONS.md"
+        fi
+        echo "{\"ok\":true}"
       '
 
   - id: notify_t4t5
@@ -168,7 +248,15 @@ steps:
       bash -c '
         PFILE="$LOBSTER_ARG_PROMPTS_DIR/T6.txt"
         [ ! -f "$PFILE" ] && echo "{\"skipped\":true}" && exit 0
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 || true
+        # T6 (Integration) uses opus — needs full picture to wire everything
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp); cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"; echo "## FULL BUILD CONTEXT (all previous steps):" >> "$TMPF"; cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          [ -f "$CTX/T1-ARCHITECTURE.md" ] && echo "" >> "$TMPF" && echo "## ARCHITECTURE:" >> "$TMPF" && cat "$CTX/T1-ARCHITECTURE.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 900 --model claude-opus-4-6 || true
         echo '{"ok":true}'
       '
 
@@ -315,7 +403,7 @@ steps:
         echo "{\"ok\":true}"
       '
 
-  # ── REQUIREMENTS VERIFICATION (codex checks all intake requirements) ──
+  # ── REQUIREMENTS VERIFICATION (opus — reads full context + verifies everything) ──
   - id: verify_requirements
     command: >
       bash -c '
@@ -324,7 +412,14 @@ steps:
           echo "{\"skipped\":true,\"reason\":\"no VERIFY.txt\"}"
           exit 0
         fi
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 1800 || true
+        # Inject full build context for auditor
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        if [ -d "$CTX" ] && [ -f "$CTX/BUILD_DECISIONS.md" ]; then
+          TMPF=$(mktemp); cat "$PFILE" > "$TMPF"
+          echo "" >> "$TMPF"; echo "## FULL BUILD CONTEXT:" >> "$TMPF"; cat "$CTX/BUILD_DECISIONS.md" >> "$TMPF"
+          PFILE="$TMPF"
+        fi
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 1800 --model claude-opus-4-6 || true
         echo '{"ok":true}'
       '
 
@@ -424,4 +519,13 @@ steps:
             --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
+      '
+
+  # ── CLEANUP build context ─────────────────────────────────
+  - id: cleanup_context
+    command: >
+      bash -c '
+        CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
+        rm -rf "$CTX" 2>/dev/null || true
+        echo "{\"ok\":true,\"cleaned\":\"$CTX\"}"
       '
