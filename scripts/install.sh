@@ -112,7 +112,7 @@ install_deps() {
       run_root bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
       run_root apt-get install -y -qq nodejs
     fi
-    run_root apt-get install -y -qq git python3 curl jq
+    run_root apt-get install -y -qq git python3 curl jq rsync
   elif [ "$os" = "macos" ]; then
     if ! command -v node >/dev/null 2>&1; then
       if command -v brew >/dev/null 2>&1; then
@@ -259,10 +259,22 @@ PYEOF
     openclaw gateway install 2>/dev/null || true
     sleep 3
   else
-    openclaw gateway stop 2>/dev/null || true
-    sleep 1
-    openclaw gateway start 2>/dev/null || true
-    sleep 3
+    # Try systemd first, fall back to foreground (Docker/containers)
+    if openclaw gateway start 2>/dev/null; then
+      sleep 3
+    else
+      info "systemd unavailable, starting gateway in foreground..."
+      mkdir -p "$OPENCLAW_HOME/logs"
+      (
+        cd "$OPENCLAW_HOME"
+        export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
+        export OPENCLAW_CONFIG_PATH="$OPENCLAW_HOME/openclaw.json"
+        if [ -f "$OPENCLAW_HOME/.env" ]; then set -a; . "$OPENCLAW_HOME/.env"; set +a; fi
+        nohup openclaw gateway run --port "$OPENCLAW_PORT" > "$OPENCLAW_HOME/logs/gateway.log" 2>&1 &
+        echo $! > "$OPENCLAW_HOME/.gateway.pid"
+      )
+      sleep 5
+    fi
   fi
 
   # Verify
@@ -271,7 +283,7 @@ PYEOF
   if echo "$probe" | grep -q "probe: ok"; then
     info "Gateway running (port $OPENCLAW_PORT)"
   else
-    warn "Gateway probe failed. May need manual start."
+    warn "Gateway probe failed. Check logs: $OPENCLAW_HOME/logs/gateway.log"
   fi
 }
 
@@ -408,9 +420,25 @@ finalize() {
     sleep 2
     launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || openclaw gateway install 2>/dev/null || true
   else
+    # Kill existing gateway
+    if [ -f "$OPENCLAW_HOME/.gateway.pid" ]; then
+      kill "$(cat "$OPENCLAW_HOME/.gateway.pid")" 2>/dev/null || true
+      rm -f "$OPENCLAW_HOME/.gateway.pid"
+    fi
     openclaw gateway stop 2>/dev/null || true
     sleep 2
-    openclaw gateway start 2>/dev/null || true
+    # Try systemd, fall back to foreground
+    if ! openclaw gateway start 2>/dev/null; then
+      mkdir -p "$OPENCLAW_HOME/logs"
+      (
+        cd "$OPENCLAW_HOME"
+        export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
+        export OPENCLAW_CONFIG_PATH="$OPENCLAW_HOME/openclaw.json"
+        if [ -f "$OPENCLAW_HOME/.env" ]; then set -a; . "$OPENCLAW_HOME/.env"; set +a; fi
+        nohup openclaw gateway run --port "$OPENCLAW_PORT" > "$OPENCLAW_HOME/logs/gateway.log" 2>&1 &
+        echo $! > "$OPENCLAW_HOME/.gateway.pid"
+      )
+    fi
   fi
   sleep 5
 
