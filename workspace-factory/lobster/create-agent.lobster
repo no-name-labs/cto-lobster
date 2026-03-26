@@ -372,12 +372,10 @@ steps:
           WS="$LOBSTER_ARG_WORKSPACE"
           PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
           TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 || echo "no tests")
+          MSG="Build complete: $LOBSTER_ARG_AGENT_ID | $PY Python files | $TESTS"
           openclaw message send --channel telegram \
             --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" \
-            -m "✅ <b>Build complete: $LOBSTER_ARG_AGENT_ID</b>
-📦 $PY Python files
-🧪 $TESTS
-Talk to the agent in topic $LOBSTER_ARG_TOPIC_ID" \
+            -m "$MSG" \
             --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
