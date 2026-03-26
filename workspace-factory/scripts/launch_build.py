@@ -110,18 +110,8 @@ def find_openclaw_root() -> str:
 
 
 def notify(chat_id: str, topic_id: str, message: str):
-    """Send a Telegram notification via openclaw CLI. Silent fail if no chat_id."""
-    if not chat_id:
-        return
-    cmd = ["openclaw", "message", "send", "--channel", "telegram"]
-    target = chat_id
-    if topic_id:
-        target = f"{chat_id}:topic:{topic_id}"
-    cmd += ["--target", target, "-m", message]
-    try:
-        subprocess.run(cmd, capture_output=True, timeout=15)
-    except Exception:
-        pass
+    """Deprecated — notifications handled by lobster steps + build_monitor.sh cron."""
+    pass
 
 
 def detect_active_step(prompts_dir: str) -> str | None:
@@ -184,8 +174,10 @@ def main():
     p.add_argument("--repo-url", default="", help="GitHub repo URL (required for install)")
     p.add_argument("--chat-id", default="", help="Telegram chat ID for AGENT binding (where agent will live)")
     p.add_argument("--topic-id", default="", help="Telegram topic ID for AGENT binding")
-    p.add_argument("--notify-chat-id", default="", help="Telegram chat ID for BUILD notifications (CTO's topic)")
-    p.add_argument("--notify-topic-id", default="", help="Telegram topic ID for BUILD notifications (CTO's topic)")
+    # --notify-chat-id/--notify-topic-id kept for backward compat but unused
+    # Notifications handled by lobster steps + build_monitor.sh
+    p.add_argument("--notify-chat-id", default="", help="(deprecated) notifications handled by lobster")
+    p.add_argument("--notify-topic-id", default="", help="(deprecated) notifications handled by lobster")
     p.add_argument("--test-cmd", default="python3 -m pytest -q", help="Test runner command")
     p.add_argument("--timeout", type=int, default=7200, help="Max runtime in seconds (default: 2h)")
     args = p.parse_args()
@@ -279,8 +271,6 @@ def main():
             "workspace": workspace,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
-            "notify_chat_id": notify_chat,
-            "notify_topic_id": notify_topic,
             "test_cmd": args.test_cmd,
         }
     elif args.action == "edit":
@@ -291,8 +281,6 @@ def main():
             "prompts_dir": args.prompts_dir,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
-            "notify_chat_id": notify_chat,
-            "notify_topic_id": notify_topic,
             "test_cmd": args.test_cmd,
         }
         workspace = f"{root}/workspace-{args.agent_id}"
@@ -305,8 +293,6 @@ def main():
             "repo_url": args.repo_url,
             "chat_id": args.chat_id,
             "topic_id": args.topic_id,
-            "notify_chat_id": notify_chat,
-            "notify_topic_id": notify_topic,
         }
         workspace = f"{root}/workspace-{args.agent_id}"
     else:
@@ -361,7 +347,7 @@ def main():
     log(f"Lobster: {lobster_file}")
     log(f"Prompts: {prompt_count} files")
     notify(
-        args.chat_id, args.topic_id,
+        notify_chat, notify_topic,
         f"🚀 <b>Build started: {args.agent_id or 'diagnostic'}</b>\n"
         f"Action: {args.action}\n"
         f"Prompt files: {prompt_count}\n"

@@ -91,15 +91,27 @@ T2: ... | acceptance: ...
 ### Defaults Applied
 - [any assumptions CTO made that user should know about]
 
-Reply:
-- **YES** → approve and start build
-- **REVISE** → change requirements before building
-- **STOP** → end at planning only
 ```
 
-Do NOT start build until explicit **YES** is received.
-If user says REVISE — update the sign-off and present again.
-If requirements change after sign-off — invalidate and re-run intake.
+Send the sign-off with inline buttons using `message` tool:
+```
+--buttons '[[{"text":"✅ YES — Build it","callback_data":"signoff:yes"},{"text":"✏️ REVISE","callback_data":"signoff:revise"},{"text":"🛑 STOP","callback_data":"signoff:stop"}]]'
+```
+
+When you receive callback_data:
+- `signoff:yes` → start build immediately
+- `signoff:revise` → ask what to change, update sign-off, present again with buttons
+- `signoff:stop` → acknowledge and stop
+
+Do NOT start build until explicit YES (button or text).
+
+Similarly, when pipeline reaches approval gate and you inform the user, send with buttons:
+```
+--buttons '[[{"text":"✅ APPROVE — Go live","callback_data":"approve:yes"},{"text":"❌ REJECT","callback_data":"approve:no"}]]'
+```
+
+On `approve:yes` → lobster resume with approve=true.
+On `approve:no` → report to user, do not resume.
 
 ### SECRETS COLLECTION
 

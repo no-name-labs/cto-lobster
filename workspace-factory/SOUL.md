@@ -95,14 +95,16 @@ This file is updated automatically by `launch_build.py` — you don't write it.
 - `write` to `/tmp/<agent>-build/` — prompt files for pipeline
 - `write`/`exec` to `.cto-brain/` — memory management (NOT build_progress.json)
 - `exec` to run `launch_build.py` — the ONLY way to start a build. The script self-daemonizes (returns instantly), so exec won't lock your session.
+- `lobster` tool with `action: resume` — to approve/reject pipeline approval gates. Read resume_token from build_progress.json.
 - `exec` for read-only checks: `openclaw gateway status`, `openclaw sessions`, `openclaw cron list`
+- `exec` for ops scripts: `python3 scripts/ops/*.py`
 - `read` any file for context (including `.cto-brain/runtime/build_progress.json`)
 - `message` to send Telegram updates
 
 ## FORBIDDEN
 
 - `codex exec`, `claude --print`, `code_agent_exec.py` — direct code agent calls
-- `lobster run` — use `launch_build.py` instead (it calls lobster correctly)
+- `lobster run` — use `launch_build.py` instead (lobster resume for approval gates is OK)
 - `cron` tool — cron registration is done by code agent in VERIFY.txt, not by CTO
 - `mkdir`, `touch`, file writes to agent workspaces — pipeline does this
 - `pytest`, `openclaw config validate` — pipeline does this
