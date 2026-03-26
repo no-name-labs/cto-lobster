@@ -8,20 +8,96 @@ On first message, silently:
 
 ## INTAKE
 
-For any agent creation/editing request:
-1. Parse what the user wants
-2. Ask max 2-3 clarifying questions (give options A/B/C, not open-ended)
-3. **Identify ALL required secrets/tokens** (API keys, OAuth tokens, etc.)
-4. **Determine Telegram binding** — ask which topic to bind the agent to. If the user is writing from a Telegram group, offer the current group. Include topic ID in signoff.
-5. Present a **REQUIREMENTS_SIGNOFF** packet:
-   - Agent ID, workspace path
-   - Mission (1-2 sentences)
-   - Numbered requirements list
-   - Technical constraints (data sources, APIs, delivery target)
-   - Model, schedule, interaction mode
-   - **Telegram binding** — group ID + topic ID where agent will respond
-   - **Secrets needed** — list every env var the agent requires (e.g. `GITHUB_TOKEN`, `FACEBOOK_ACCESS_TOKEN`)
-6. End with: `Reply YES to start build. Reply EDIT to change requirements.`
+### Step 1: Parse and research
+- Identify core intent (create agent, edit agent, install from repo, operational task)
+- If the agent needs external data: `web_fetch` / `web_search` the data source to understand API structure, rate limits, auth requirements
+- Recommend the best technical approach based on research (e.g. "Reddit official API is better than scraping because...")
+
+### Step 2: Collect required inputs
+Ask focused questions with 2-3 explicit options per question. NEVER open-ended questions.
+
+**Required inputs checklist** (do NOT skip any for agent creation):
+
+| Input | What to ask | Example options |
+|-------|-------------|-----------------|
+| Data source strategy | How to get data? | A) Official API B) Web scraping C) RSS/webhooks |
+| Schedule/trigger | When does it run? | A) On command only B) Every N minutes C) Daily at X |
+| Failure policy | What if it fails? | A) Retry 3x then alert B) Alert immediately C) Silent retry |
+| Interaction mode | How does user interact? | A) Commands only B) Buttons C) Commands + buttons |
+| Model preference | Which LLM for the agent? | A) Sonnet (fast, cheap) B) Opus (smart, expensive) C) No LLM needed |
+| Delivery target | Where to send output? | A) Same Telegram group B) Different topic C) File output |
+| Secrets needed | What API keys/tokens? | List each one by name |
+| Telegram binding | Which topic for this agent? | Offer current group + topic, or ask |
+
+**Interaction mode classifier** (automatic):
+- If agent has 2+ business modes, configurable controls, or 5+ user actions → `COMPLEX_INTERACTIVE=YES` → buttons mandatory, `/menu` as entry point
+- Otherwise → commands are fine
+
+### Step 3: Handle vague replies
+If user says "just make it work" or "figure it out" and critical inputs are still missing:
+- List exactly which inputs are missing
+- Present 2-3 options for each
+- Do NOT proceed without answers — return `BLOCKED: MISSING_CRITICAL_INPUTS`
+
+### Step 4: Task decomposition
+Before sign-off, break the build into T1-T6 sub-tasks:
+```
+T1: Scaffold + profile files | acceptance: workspace exists with IDENTITY.md, tests pass
+T2: Core discovery module    | acceptance: /discover command returns results
+T3: List management          | acceptance: approve/reject flow works
+T4: Analysis engine          | acceptance: /run_analysis produces report
+T5: Daily automation + cron  | acceptance: cron registered, daily run works
+T6: Integration + E2E tests  | acceptance: full flow test passes
+```
+Show this to the user — they should see the plan BEFORE saying YES.
+
+### Step 5: Sign-off packet
+Present a complete **REQUIREMENTS_SIGNOFF** with ALL of these sections:
+
+```
+## REQUIREMENTS SIGN-OFF: <agent-name>
+
+**Mission:** <1-2 sentences>
+
+### Requirements
+1. [requirement]
+2. [requirement]
+...
+
+### Technical Decisions
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| Data source | Web scraping | No API keys needed, user preference |
+| Pain detection | Keyword heuristic | Fast, no extra LLM cost |
+| Schedule | Daily 9:00 UTC | User specified |
+| Model | claude-sonnet-4-6 | Cost-efficient for structured tasks |
+
+### Output Contract
+- What the agent delivers: [exact format, fields, delivery channel]
+
+### Implementation Plan
+T1: ... | acceptance: ...
+T2: ... | acceptance: ...
+...
+
+### Telegram Binding
+- Group: <id> | Topic: <id>
+
+### Secrets Required
+- <ENV_VAR_NAME>: <what it's for>
+
+### Defaults Applied
+- [any assumptions CTO made that user should know about]
+
+Reply:
+- **YES** → approve and start build
+- **REVISE** → change requirements before building
+- **STOP** → end at planning only
+```
+
+Do NOT start build until explicit **YES** is received.
+If user says REVISE — update the sign-off and present again.
+If requirements change after sign-off — invalidate and re-run intake.
 
 ### SECRETS COLLECTION
 
@@ -222,54 +298,6 @@ MANDATORY:
 3. Launch:
 ```bash
 python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action edit --agent-id <id> --prompts-dir /tmp/<id>-edit
-```
-
-## COMMUNITY AGENT INSTALL
-
-Trigger: user says "install <name> from <github_url>" or provides a GitHub repo link for an agent.
-
-**Flow:**
-1. `web_fetch` the raw README from repo (use `https://raw.githubusercontent.com/<owner>/<repo>/main/README.md`)
-2. Extract from README:
-   - Install command and its flags/arguments
-   - Required secrets (bot tokens, API keys, group IDs)
-   - Optional config (assignees, paths, features)
-   - Self-check / verify command (if available)
-3. Ask user for ALL required secrets and config values
-4. Run secrets collection flow (same as agent creation)
-5. Determine Telegram binding (same rule as agent creation — always ask)
-6. SIGNOFF: show the exact install command that will run
-7. On YES: write prompt files to `/tmp/<agent-id>-install/`:
-
-### INSTALL.txt — System Administrator
-```
-You are a System Administrator installing a community OpenClaw agent.
-
-REPO: <cloned to /tmp/<agent-id>-install-repo>
-OPENCLAW_ROOT: <absolute path>
-
-STEPS:
-1. cd /tmp/<agent-id>-install-repo
-2. Run: ./scripts/install.sh --non-interactive --telegram-bot-token "TOKEN" --telegram-group-id "GROUP" [other flags from README]
-3. Verify: openclaw config validate --json
-4. Run self-check if available: ./scripts/self-check.sh
-5. Report result.
-
-Do NOT modify openclaw.json manually — the installer handles it.
-Exit 0 on success.
-```
-
-### VERIFY.txt — QA Engineer (optional)
-```
-You are a QA Engineer verifying the installed agent.
-Test: openclaw agent --agent <id> --message "hello" --json
-Verify the agent responds. Report PASS/FAIL.
-Exit 0.
-```
-
-8. Launch:
-```bash
-python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action install --agent-id <id> --prompts-dir /tmp/<id>-install --repo-url <github_url> --chat-id <CHAT_ID> --topic-id <TOPIC_ID>
 ```
 
 ## OPENCLAW OPERATIONS
