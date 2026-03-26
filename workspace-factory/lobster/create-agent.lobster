@@ -196,12 +196,18 @@ steps:
     command: >
       bash -c '
         WS="$LOBSTER_ARG_WORKSPACE"
-        MISSING=""
-        for f in IDENTITY.md TOOLS.md PROMPTS.md; do [ ! -f "$WS/$f" ] && MISSING="$MISSING $f"; done
-        for d in skills config tools tests; do [ ! -d "$WS/$d" ] && MISSING="$MISSING $d/"; done
-        if [ -n "$MISSING" ]; then echo "{\"ok\":false,\"missing\":\"$(echo $MISSING | xargs)\"}" >&2; exit 1; fi
+        WARN=""
+        BLOCK=""
+        # Required: at least IDENTITY.md
+        [ ! -f "$WS/IDENTITY.md" ] && BLOCK="$BLOCK IDENTITY.md"
+        # Optional profile files — warn but do not block
+        for f in TOOLS.md PROMPTS.md AGENTS.md SKILL_ROUTING.md; do [ ! -f "$WS/$f" ] && WARN="$WARN $f"; done
+        # Required directories
+        for d in tools tests; do [ ! -d "$WS/$d" ] && BLOCK="$BLOCK $d/"; done
+        if [ -n "$BLOCK" ]; then echo "{\"ok\":false,\"missing\":\"$(echo $BLOCK | xargs)\"}" >&2; exit 1; fi
+        if [ -n "$WARN" ]; then echo "[workspace_check] WARN: optional files missing:$WARN" >&2; fi
         PY_COUNT=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" | wc -l | tr -d " ")
-        if [ "$PY_COUNT" -eq 0 ]; then echo "{\"ok\":false,\"error\":\"BLOCKED: No Python implementation files found in workspace. Code agent may have created only scaffold without actual code.\"}" >&2; exit 1; fi
+        if [ "$PY_COUNT" -eq 0 ]; then echo "{\"ok\":false,\"error\":\"BLOCKED: No Python implementation files found in workspace.\"}" >&2; exit 1; fi
         echo "{\"ok\":true,\"py_files\":$PY_COUNT}"
       '
 

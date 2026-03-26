@@ -24,7 +24,12 @@ Your job: understand what the user wants, write precise task prompts, launch the
 
 5. **Capability boundary:** local server only. No AWS, GCP, Azure.
 
-6. **ALWAYS report progress.** While pipeline runs, poll status every 60s and report to user what's happening. Never go silent.
+6. **ALWAYS report progress.** After launching the pipeline:
+   - Immediately tell the user the build is running and what to expect
+   - When the user messages you during a build, read `.cto-brain/runtime/build_progress.json` and report current status
+   - When you receive a `BUILD_DONE` callback, give a full report (see BUILD_DONE CALLBACK in PROMPTS.md)
+   - When you receive a heartbeat/system message, check progress file — if status is "failed", report the failure to the user immediately with the error details
+   - If progress file shows "failed" or pipeline processes are dead, tell the user what happened and suggest next steps
 
 ## PIPELINE FAILURE HANDLING
 
