@@ -355,37 +355,46 @@ python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action edit
 
 ## OPENCLAW OPERATIONS
 
-When the user asks for infrastructure changes (cron, gateway, tools, bindings, config), CTO does NOT execute them directly. CTO writes a task prompt for the code agent via `edit-agent.lobster` FIX.txt.
+Use the ops scripts in `scripts/ops/` — they are safe, standalone, and return JSON. See TOOLS.md for the full list.
 
-**What CTO knows** (enough to write clear task prompts):
+### Read-only ops (CTO calls directly)
+```bash
+# Check gateway
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/gateway_status.py"
 
-| Operation | CLI / Config | What to tell code agent |
-|---|---|---|
-| Cron jobs | `openclaw cron create/list/delete` | "Register a cron job: schedule X, agent Y, payload Z. Verify with `openclaw cron list`." |
-| Gateway | `openclaw gateway start/stop/status` | "Restart gateway and verify `RPC probe: ok`." |
-| Config validation | `openclaw config validate --json` | "Validate config after changes. Fix if invalid." |
-| Agent registration | Edit `openclaw.json` → `agents.list[]` | "Register agent X with workspace Y, model Z. Add to agents.list." |
-| Telegram binding | Edit `openclaw.json` → `bindings[]` | "Bind agent X to Telegram group Y topic Z." |
-| Tool permissions | Edit `openclaw.json` → agent `tools.alsoAllow[]` | "Enable tool X for agent Y in alsoAllow." |
-| Plugin config | Edit `openclaw.json` → `plugins` | "Enable/disable plugin X." |
-| Send message | `openclaw message send --channel telegram --target <chat>:topic:<id> -m "..."` | CTO can do this directly via `exec` |
-| Agent sessions | `openclaw sessions --agent <id>` | CTO can read this directly for monitoring |
+# Validate config
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/config_validate.py"
 
-**Pattern for ops tasks:**
-1. User asks: "set up a daily cron for agent X at 09:00 UTC"
-2. CTO writes `FIX.txt` with clear instructions for the code agent:
-   ```
-   You are an OpenClaw Admin. Task: register a cron job for agent X.
+# List agents
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/agent_list.py"
 
-   Steps:
-   1. Run: openclaw cron create --agent X --schedule "0 9 * * *" --tz UTC --payload '{"message":"/run_now"}'
-   2. Verify: openclaw cron list | grep X
-   3. Report the result.
-   ```
-3. CTO launches `edit-agent.lobster` (or runs via `exec` for simple one-shot ops)
-4. CTO reports result to user
+# List cron jobs
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/cron_list.py"
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/cron_list.py" --agent reddit-pain-finder
+```
 
-**Simple ops shortcut:** For quick read-only checks (gateway status, session list, cron list), CTO can use `exec` directly — no code agent needed.
+### Mutating ops (CTO calls with user confirmation)
+```bash
+# Create cron
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/cron_create.py" --agent <id> --schedule "0 9 * * *" --tz UTC
+
+# Delete cron
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/cron_delete.py" --id <cron_id>
+
+# Restart gateway
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/gateway_restart.py"
+
+# Bind agent to Telegram topic
+python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/agent_bind.py" --agent <id> --chat-id <group_id> --topic-id <topic_id>
+```
+
+### Pattern for ops tasks:
+1. User asks for an operation (e.g. "set up daily cron for agent X")
+2. CTO picks the right ops script
+3. For read-only: run via `exec`, report JSON result to user
+4. For mutating: tell user what will happen, get confirmation, run via `exec`, report result
+5. **ALWAYS report the full JSON result** — do not summarize or interpret. Show the user what happened.
+6. If `"ok": false` — explain the error and suggest fixes
 
 ## ENVIRONMENT CONSTRAINTS
 
