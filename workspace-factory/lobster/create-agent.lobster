@@ -78,7 +78,7 @@ except: pass
           echo "{\"skipped\":true,\"reason\":\"no RESEARCH.txt\"}"
           exit 0
         fi
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" ----timeout 600 || true
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 600 || true
         # Write context report
         CTX="/tmp/$LOBSTER_ARG_AGENT_ID-context"
         if [ -d "$CTX" ]; then

@@ -24,3 +24,11 @@ skills/SKILL_INDEX.md
 skills/factory-create-agent/SKILL.md
 skills/factory-intake/SKILL.md
 skills/factory-memory-garden/SKILL.md
+scripts/ops/agent_bind.py
+scripts/ops/agent_list.py
+scripts/ops/config_validate.py
+scripts/ops/cron_create.py
+scripts/ops/cron_delete.py
+scripts/ops/cron_list.py
+scripts/ops/gateway_restart.py
+scripts/ops/gateway_status.py
