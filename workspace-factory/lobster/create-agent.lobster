@@ -50,7 +50,7 @@ steps:
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
           COUNT=$(ls "$LOBSTER_ARG_PROMPTS_DIR"/T*.txt 2>/dev/null | wc -l)
           HAS_RESEARCH="no"; [ -f "$LOBSTER_ARG_PROMPTS_DIR/RESEARCH.txt" ] && HAS_RESEARCH="yes"
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🔨 Build started: $LOBSTER_ARG_AGENT_ID | $COUNT tasks | research=$HAS_RESEARCH" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🚀 Build started: $LOBSTER_ARG_AGENT_ID | $COUNT tasks | research=$HAS_RESEARCH" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -68,6 +68,15 @@ steps:
         echo '{"ok":true}'
       '
 
+  - id: notify_research
+    command: >
+      bash -c '
+        if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🔬 Research complete for $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   # ── BUILD TASKS (T1-T6, each includes own tests+fixes) ────────
   - id: t1
     command: >
@@ -83,7 +92,7 @@ steps:
       bash -c '
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
           FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "✅ T1 done ($FILES files)" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🏗️ T1: Scaffold done ($FILES files)" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -102,7 +111,7 @@ steps:
       bash -c '
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
           FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "✅ T2 done ($FILES files)" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "⚙️ T2: Core logic done ($FILES files)" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -121,7 +130,7 @@ steps:
       bash -c '
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
           FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "✅ T3 done ($FILES files)" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🧠 T3: Processing done ($FILES files)" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -144,6 +153,16 @@ steps:
         echo '{"ok":true}'
       '
 
+  - id: notify_t4t5
+    command: >
+      bash -c '
+        if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
+          PY=$(find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "📬 T4-T5 done ($PY py files)" --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   - id: t6
     command: >
       bash -c '
@@ -158,7 +177,7 @@ steps:
       bash -c '
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
           FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🔧 Build complete ($FILES files). Validating..." --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "📦 Build complete ($FILES files). Validating..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -199,6 +218,17 @@ steps:
         fi
       '
 
+  - id: notify_validated
+    command: >
+      bash -c '
+        if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
+          PY=$(find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
+          TESTS=$(cd "$LOBSTER_ARG_WORKSPACE" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "? passed")
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "✅ Validated: $PY py files, $TESTS" --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   # ── REGISTER + VALIDATE ────────────────────────────────────────
   - id: register_agent
     command: >
@@ -213,6 +243,15 @@ steps:
         RESULT=$(openclaw config validate --json 2>&1 | tail -1)
         echo "$RESULT"
         echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || exit 1
+      '
+
+  - id: notify_registered
+    command: >
+      bash -c '
+        if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "📋 Agent registered. Restarting gateway..." --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
       '
 
   # ── GATEWAY RESTART (needed before smoke so agent is visible) ──
@@ -343,7 +382,7 @@ steps:
     command: >
       bash -c '
         if [ -n "$LOBSTER_ARG_CHAT_ID" ] && [ -n "$LOBSTER_ARG_TOPIC_ID" ]; then
-          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🚀 $LOBSTER_ARG_AGENT_ID is LIVE!" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$LOBSTER_ARG_CHAT_ID:topic:$LOBSTER_ARG_TOPIC_ID" -m "🎉 $LOBSTER_ARG_AGENT_ID is LIVE!" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true,\"done\":true}"
       '

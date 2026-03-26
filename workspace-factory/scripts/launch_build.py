@@ -30,16 +30,16 @@ from pathlib import Path
 # Step labels for Telegram reporting
 STEP_LABELS = {
     "RESEARCH.txt": "🔬 Research",
-    "T1.txt": "🏗️ T1: Scaffold & Architecture",
+    "T1.txt": "🏗️ T1: Scaffold",
     "T2.txt": "⚙️ T2: Core Logic",
-    "T3.txt": "⚙️ T3: Processing",
-    "T4.txt": "⚙️ T4: Delivery",
-    "T5.txt": "⚙️ T5: Integration",
-    "T6.txt": "⚙️ T6: Advanced",
-    "T7.txt": "⚙️ T7: Extra",
-    "T8.txt": "⚙️ T8: Extra",
+    "T3.txt": "🧠 T3: Processing",
+    "T4.txt": "📬 T4: Delivery",
+    "T5.txt": "🔗 T5: Integration",
+    "T6.txt": "🎯 T6: Advanced",
+    "T7.txt": "🔩 T7: Extra",
+    "T8.txt": "🔩 T8: Extra",
     "SMOKE.txt": "🧪 Smoke Test",
-    "VERIFY.txt": "✅ Requirements Verification",
+    "VERIFY.txt": "📝 Verification",
     "FIX.txt": "🔧 Fix",
 }
 
