@@ -193,9 +193,28 @@ def main():
     root = find_openclaw_root()
     factory = f"{root}/workspace-factory"
 
-    # Resolve notification target: use --notify-* if provided, otherwise fall back to --chat-id/--topic-id
-    notify_chat = args.notify_chat_id or args.chat_id
-    notify_topic = args.notify_topic_id or args.topic_id
+    # Auto-resolve CTO notification target from openclaw.json binding
+    notify_chat = ""
+    notify_topic = ""
+    try:
+        config = json.loads(Path(f"{root}/openclaw.json").read_text())
+        for b in config.get("bindings", []):
+            if b.get("agentId") == "cto-factory":
+                peer = b.get("match", {}).get("peer", {}).get("id", "")
+                if ":topic:" in peer:
+                    parts = peer.split(":topic:")
+                    notify_chat = parts[0]
+                    notify_topic = parts[1]
+                else:
+                    notify_chat = peer
+                break
+    except Exception:
+        pass
+    # CLI override if explicitly provided
+    if args.notify_chat_id:
+        notify_chat = args.notify_chat_id
+    if args.notify_topic_id:
+        notify_topic = args.notify_topic_id
 
     # Validation
     if args.action in ("create", "edit", "install") and not args.agent_id:
