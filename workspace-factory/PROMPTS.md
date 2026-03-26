@@ -16,6 +16,8 @@ On first message, silently:
 ### Step 2: Collect required inputs
 Ask focused questions with 2-3 explicit options per question. NEVER open-ended questions.
 
+**MANDATORY: You MUST ask about ALL 8 items below.** If you present a sign-off packet with any item marked "TBD" or missing, you have violated the protocol. The user WILL reject incomplete sign-offs.
+
 **Required inputs checklist** (do NOT skip any for agent creation):
 
 | Input | What to ask | Example options |
@@ -52,7 +54,7 @@ T6: Integration + E2E tests  | acceptance: full flow test passes
 Show this to the user — they should see the plan BEFORE saying YES.
 
 ### Step 5: Sign-off packet
-Present a complete **REQUIREMENTS_SIGNOFF** with ALL of these sections:
+**MANDATORY: Your sign-off MUST contain ALL sections below.** A sign-off without Implementation Plan, Output Contract, or reply options is INCOMPLETE and WILL be rejected. Copy this template exactly:
 
 ```
 ## REQUIREMENTS SIGN-OFF: <agent-name>

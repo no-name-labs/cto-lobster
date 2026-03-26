@@ -29,10 +29,11 @@ def run_openclaw(*args, timeout=30):
 def main():
     p = argparse.ArgumentParser(description="Create an OpenClaw cron job")
     p.add_argument("--agent", required=True, help="Agent ID")
-    p.add_argument("--schedule", required=True, help="Cron schedule (e.g. '0 9 * * *')")
+    p.add_argument("--schedule", required=True, help="Cron expression (e.g. '0 9 * * *')")
     p.add_argument("--tz", default="UTC", help="Timezone (default: UTC)")
-    p.add_argument("--payload", default='{"message":"/run_now"}', help="JSON payload")
+    p.add_argument("--message", default="/run_now", help="Agent message payload")
     p.add_argument("--name", default="", help="Cron job name")
+    p.add_argument("--exact", action="store_true", help="Disable staggering")
     args = p.parse_args()
 
     name = args.name or f"{args.agent}-daily"
@@ -45,23 +46,18 @@ def main():
         print(json.dumps({"ok": False, "error": f"Agent '{args.agent}' not found. Available: {agent_ids}"}))
         return 1
 
-    # Validate payload is valid JSON
-    try:
-        json.loads(args.payload)
-    except json.JSONDecodeError as e:
-        print(json.dumps({"ok": False, "error": f"Invalid payload JSON: {e}"}))
-        return 1
-
     # Create cron
-    stdout, stderr, code = run_openclaw(
+    cmd = [
         "cron", "create",
         "--agent", args.agent,
-        "--schedule", args.schedule,
+        "--cron", args.schedule,
         "--tz", args.tz,
         "--name", name,
-        "--payload", args.payload,
-        "--json"
-    )
+        "--message", args.message,
+        "--exact",
+        "--json",
+    ]
+    stdout, stderr, code = run_openclaw(*cmd)
 
     if code != 0:
         print(json.dumps({"ok": False, "error": stderr or stdout, "exit_code": code}))

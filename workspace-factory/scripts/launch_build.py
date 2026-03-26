@@ -125,35 +125,51 @@ def notify(chat_id: str, topic_id: str, message: str):
 
 
 def detect_active_step(prompts_dir: str) -> str | None:
-    """Check which prompt file is currently being processed by code agent."""
+    """Check which prompt file is currently being processed by code agent.
+    Uses two methods: ps aux for active process, and context dir for completed steps."""
+    # Method 1: Check ps aux for running code_agent_exec
     try:
         result = subprocess.run(
             ["ps", "aux"], capture_output=True, text=True, timeout=5
         )
         for line in result.stdout.splitlines():
             if "code_agent_exec" in line or "codex_guarded_exec" in line:
-                # Extract prompt file from --prompt-file arg (resolved path)
                 m = re.search(r"--prompt-file\s+(\S+)", line)
                 if m:
                     name = Path(m.group(1)).name
-                    # Skip bash variable references like $PFILE — only accept real filenames
                     if "$" not in name and name.endswith(".txt"):
                         return name
             if "claude" in line and "--print" in line:
-                # Claude Code with --print may show the prompt file path directly
                 m = re.search(r"--prompt-file\s+(\S+)", line)
                 if m:
                     name = Path(m.group(1)).name
                     if "$" not in name and name.endswith(".txt"):
                         return name
-                # Also look for prompt file paths appearing as bare arguments
                 m = re.search(r"(/\S+?/([A-Z0-9_]+\.txt))", line)
-                if m:
-                    name = m.group(2)
-                    if "$" not in name:
-                        return name
+                if m and "$" not in m.group(2):
+                    return m.group(2)
     except Exception:
         pass
+
+    # Method 2: Check which prompt files have been recently accessed
+    # (lobster reads them sequentially, so the most recently accessed is current)
+    if prompts_dir:
+        try:
+            pd = Path(prompts_dir)
+            prompt_order = ["RESEARCH.txt", "T1.txt", "T2.txt", "T3.txt", "T4.txt", "T5.txt", "T6.txt", "T7.txt", "T8.txt", "SMOKE.txt", "VERIFY.txt"]
+            latest_name = None
+            latest_mtime = 0
+            for name in prompt_order:
+                pf = pd / name
+                if pf.exists():
+                    mtime = pf.stat().st_atime  # access time (read by code_agent_exec)
+                    if mtime > latest_mtime:
+                        latest_mtime = mtime
+                        latest_name = name
+            if latest_name and latest_mtime > 0:
+                return latest_name
+        except Exception:
+            pass
     return None
 
 

@@ -68,17 +68,28 @@ def main():
     # --- Write config ---
     config_path.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
 
-    # --- Copy auth-profiles.json from root agent dir (if exists) ---
+    # --- Copy auth-profiles.json from best available source ---
     auth_copied = False
     root = config_path.parent
     ws_path = pathlib.Path(workspace)
-    # Look for auth-profiles in main agent dir or root
-    for src in [root / "agents" / "main" / "auth-profiles.json", root / "auth-profiles.json"]:
-        if src.exists():
-            dst = ws_path / "auth-profiles.json"
-            if not dst.exists():
-                shutil.copy2(src, dst)
-                auth_copied = True
+    dst = ws_path / "auth-profiles.json"
+    # Search order: CTO agent (most likely to have OAuth), then main, then root
+    candidates = [
+        root / "agents" / "cto-factory" / "agent" / "auth-profiles.json",
+        root / "agents" / "main" / "auth-profiles.json",
+        root / "auth-profiles.json",
+    ]
+    # Also check any existing agent dirs
+    agents_dir = root / "agents"
+    if agents_dir.is_dir():
+        for agent_dir in sorted(agents_dir.iterdir()):
+            ap = agent_dir / "agent" / "auth-profiles.json"
+            if ap.exists() and ap not in candidates:
+                candidates.append(ap)
+    for src in candidates:
+        if src.exists() and src != dst:
+            shutil.copy2(src, dst)
+            auth_copied = True
             break
 
     print(json.dumps({
