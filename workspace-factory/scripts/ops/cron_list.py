@@ -52,7 +52,7 @@ def main():
         "ok": True,
         "action": "cron_list",
         "count": len(jobs),
-        "jobs": [{"id": j.get("id"), "name": j.get("name"), "agent": j.get("agentId"), "schedule": j.get("schedule", {}).get("raw", ""), "enabled": j.get("enabled", True)} for j in jobs],
+        "jobs": [{"id": j.get("id"), "name": j.get("name"), "agent": j.get("agentId"), "schedule": j.get("schedule", {}).get("expr", "") or j.get("schedule", {}).get("raw", "") or f'{j.get("schedule", {}).get("kind", "")}', "enabled": j.get("enabled", True)} for j in jobs],
     }))
     return 0
 

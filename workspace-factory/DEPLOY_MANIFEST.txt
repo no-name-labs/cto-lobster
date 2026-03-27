@@ -29,3 +29,9 @@ scripts/ops/cron_list.py
 scripts/ops/gateway_restart.py
 scripts/ops/gateway_status.py
 scripts/resolve_cto_topic.sh
+scripts/ops/agent_delete.py
+scripts/ops/agent_unbind.py
+scripts/ops/agent_set_model.py
+scripts/ops/sessions_list.py
+scripts/ops/env_set.py
+scripts/ops/cron_toggle.py

@@ -25,19 +25,23 @@ Safe, standalone scripts for managing OpenClaw. Each returns JSON. CTO can call 
 | `ops/config_validate.py` | Validate openclaw.json |
 | `ops/agent_list.py` | List all agents + bindings |
 | `ops/cron_list.py` | List cron jobs (filter by --agent) |
+| `ops/sessions_list.py` | List agent sessions (--agent, --active N) |
 
-Example: `python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/gateway_status.py"`
+**IMPORTANT:** Always use absolute path: `python3 /Users/.../workspace-factory/scripts/ops/...` — `$OPENCLAW_ROOT` does NOT resolve in exec.
 
-### Mutating (CTO delegates to code agent OR calls via exec with user confirmation)
+### Mutating (CTO calls via exec with user confirmation)
 
 | Script | What it does |
 |--------|-------------|
-| `ops/cron_create.py` | Create cron job (validates agent exists, verifies after) |
-| `ops/cron_delete.py` | Delete cron job (validates exists before delete) |
-| `ops/gateway_restart.py` | Restart gateway (macOS/Linux aware, retries, health check) |
-| `ops/agent_bind.py` | Bind agent to Telegram topic (backup before, verify after) |
-
-Example: `python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/cron_create.py" --agent reddit-pain-finder --schedule "0 9 * * *" --tz UTC`
+| `ops/cron_create.py` | Create cron job (--agent, --schedule, --tz) |
+| `ops/cron_delete.py` | Delete cron job (--id) |
+| `ops/cron_toggle.py` | Enable/disable cron (--id, --enable/--disable) |
+| `ops/gateway_restart.py` | Restart gateway (macOS/Linux aware, retries) |
+| `ops/agent_bind.py` | Bind agent to Telegram topic (--agent, --chat-id, --topic-id) |
+| `ops/agent_unbind.py` | Remove Telegram binding (--agent) |
+| `ops/agent_delete.py` | Remove agent from config (--agent, --delete-workspace) |
+| `ops/agent_set_model.py` | Change agent model (--agent, --model) |
+| `ops/env_set.py` | Set env var in .env (--key, --value) |
 
 Every mutating script: validates input → backs up → executes → verifies result → returns JSON.
 
