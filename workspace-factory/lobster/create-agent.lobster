@@ -107,16 +107,16 @@ steps:
             # Copy architecture doc if T02 created it
             [ -f "$LOBSTER_ARG_WORKSPACE/docs/ARCHITECTURE.md" ] && cp "$LOBSTER_ARG_WORKSPACE/docs/ARCHITECTURE.md" "$CTX/T02-ARCHITECTURE.md" 2>/dev/null
           fi
-          # ── Notify: done (lobster short update) ──
+          # ── Notify: done ──
           PY_NOW=$(find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
-          if [ -n "$CTO_TARGET" ]; then
-            openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ [$STEP_NUM/$TOTAL] $FNAME done ($PY_NOW py files)" --json 2>/dev/null || true
+          TEST_COUNT=""
+          if [ -d "$LOBSTER_ARG_WORKSPACE/tests" ]; then
+            TEST_COUNT=$(cd "$LOBSTER_ARG_WORKSPACE" && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "")
           fi
-          # ── Trigger CTO report (CTO writes beautiful update in correct topic) ──
           if [ -n "$CTO_TARGET" ]; then
-            CONTEXT_SUMMARY=""
-            [ -f "$CTX/BUILD_DECISIONS.md" ] && CONTEXT_SUMMARY=$(tail -10 "$CTX/BUILD_DECISIONS.md" 2>/dev/null)
-            openclaw message send --channel telegram --target "$CTO_TARGET" -m "T_DONE step=$FNAME num=$STEP_NUM total=$TOTAL py_files=$PY_NOW agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+            MSG="✅ [$STEP_NUM/$TOTAL] $FNAME done | $PY_NOW py files"
+            [ -n "$TEST_COUNT" ] && MSG="$MSG | $TEST_COUNT"
+            openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
           fi
         done
         echo "{\"ok\":true,\"steps_run\":$STEP_NUM}"
@@ -243,6 +243,20 @@ steps:
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
         if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Live smoke complete for $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
+  # ── NOTIFY APPROVAL NEEDED ─────────────────────────────────────
+  - id: notify_approval_needed
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        if [ -n "$CTO_TARGET" ]; then
+          WS="$LOBSTER_ARG_WORKSPACE"
+          PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
+          TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "? passed")
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔒 Approval needed: $LOBSTER_ARG_AGENT_ID | $PY py files | $TESTS | Reply YES to approve" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
