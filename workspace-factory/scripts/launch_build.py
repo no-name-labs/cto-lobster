@@ -456,11 +456,11 @@ def main():
             if ws_info.get("py_files"):
                 extra = f" | {ws_info['py_files']} py, {ws_info.get('test_files', 0)} tests"
             log(f"⏳ Still running: {step_str} ({elapsed}s){extra}")
-            notify(
-                args.chat_id, args.topic_id,
-                f"⏳ Still running: {step_str} ({elapsed}s){extra}"
-            )
             last_report_time = time.time()
+            # Update progress on heartbeat too
+            progress["elapsed_seconds"] = elapsed
+            progress["workspace_stats"] = ws_info
+            write_progress(root, progress)
 
         # Timeout check
         if elapsed > args.timeout:

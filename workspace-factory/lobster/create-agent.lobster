@@ -165,12 +165,12 @@ steps:
         for d in tools tests; do [ ! -d "$WS/$d" ] && BLOCK="$BLOCK $d/"; done
         if [ -n "$BLOCK" ]; then echo "{\"ok\":false,\"missing\":\"$(echo $BLOCK | xargs)\"}" >&2
           CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=workspace_check error=missing:$(echo $BLOCK | xargs) agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: workspace_check | Missing: $(echo $BLOCK | xargs) | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           exit 1; fi
         PY_COUNT=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" | wc -l | tr -d " ")
         if [ "$PY_COUNT" -eq 0 ]; then echo "{\"ok\":false,\"error\":\"BLOCKED: No Python files in workspace.\"}" >&2
           CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=workspace_check error=missing:python_files agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: workspace_check | No Python files created | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           exit 1; fi
         echo "{\"ok\":true,\"py_files\":$PY_COUNT}"
       '
@@ -183,7 +183,7 @@ steps:
           cd "$WS" && eval "$LOBSTER_ARG_TEST_CMD" 2>&1
           if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2
             CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=unit_tests error=tests_failed agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: unit_tests | Tests failed | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
             exit 1; fi
           echo "{\"ok\":true,\"tests\":\"passed\"}"
         else
@@ -218,7 +218,7 @@ steps:
         echo "$RESULT"
         echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || {
           CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=validate_config error=config_invalid agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: validate_config | Config invalid | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           exit 1
         }
       '
@@ -275,11 +275,10 @@ steps:
           [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive" --json 2>/dev/null || true
           echo "{\"ok\":true,\"alive\":true}"
         else
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=smoke error=agent_not_responding agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: smoke | Agent not responding | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           echo "{\"ok\":false,\"alive\":false}" >&2
           exit 1
         fi
-      '
       '
 
   # ── DONE → notify + CTO final report ────────────────────────

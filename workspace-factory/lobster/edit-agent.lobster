@@ -100,7 +100,7 @@ steps:
         echo "$RESULT"
         echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || {
           CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=validate_config error=config_invalid agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: validate_config | Config invalid | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           exit 1
         }
       '
@@ -113,7 +113,7 @@ steps:
           cd "$WS" && eval "$LOBSTER_ARG_TEST_CMD" 2>&1
           if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2
             CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=unit_tests error=tests_failed agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: unit_tests | Tests failed | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
             exit 1; fi
           echo "{\"ok\":true,\"tests\":\"passed\"}"
         else
