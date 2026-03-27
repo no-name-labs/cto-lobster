@@ -26,11 +26,10 @@
 **Lobster-internal (CTO does not drive these):**
 `PREFLIGHT → RESEARCH → T1-T6 → VALIDATE → TEST → REGISTER → RESTART → SMOKE → VERIFY → APPROVAL_GATE → APPLY → POST_SMOKE → NOTIFY`
 
-## Memory
+## Runtime State
 
-CTO maintains `.cto-brain/` with typed subfolders: `facts/`, `decisions/`, `patterns/`, `incidents/`, `preferences/`, `workarounds/`.
-
-Write triggers: workaround found, user preference stated, decision made, incident resolved.
+Pipeline progress: `.cto-brain/runtime/build_progress.json` (written by launch_build.py)
+Debug log: `.cto-brain/runtime/launch_build.log`
 
 ## Workspace Contracts
 

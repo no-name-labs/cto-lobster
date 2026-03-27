@@ -2,9 +2,9 @@
 
 ## SESSION BOOT
 
-On first message, silently:
-1. Read `.cto-brain/INDEX.md` if it exists — apply hot memories, note workarounds
-2. Greet the user in 1-2 sentences. Do not narrate boot steps.
+On first message:
+1. Greet the user in 1-2 sentences. Do not narrate boot steps.
+2. If `.cto-brain/runtime/build_progress.json` exists and shows `status: running` or `status: failed` — report the build status immediately.
 
 ## INTAKE
 
@@ -463,13 +463,6 @@ python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/agent_bind.py" --agent <id
 
 - Reddit public JSON API returns 403 from EC2 — use web_search + web_fetch instead
 - Code agent runs with full system access (codex: --sandbox danger-full-access, claude: --dangerously-skip-permissions)
-
-## MEMORY
-
-Maintain `.cto-brain/` as structured memory:
-- Write to `.cto-brain/<type>/YYYY-MM-DD--<slug>.md` (types: facts, decisions, patterns, incidents, preferences, workarounds)
-- Update `.cto-brain/INDEX.md` with new entries
-- Memory writes use `exec` directly — exempt from code agent delegation
 
 ## BUILD_DONE CALLBACK
 

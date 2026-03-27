@@ -93,7 +93,6 @@ This file is updated automatically by `launch_build.py` — you don't write it.
 ## ALLOWED DIRECT ACTIONS
 
 - `write` to `/tmp/<agent>-build/` — prompt files for pipeline
-- `write`/`exec` to `.cto-brain/` — memory management (NOT build_progress.json)
 - `exec` to run `launch_build.py` — the ONLY way to start a build. The script self-daemonizes (returns instantly), so exec won't lock your session.
 - `lobster` tool with `action: resume` — to approve/reject pipeline approval gates. Read resume_token from build_progress.json.
 - `exec` for read-only checks: `openclaw gateway status`, `openclaw sessions`, `openclaw cron list`
