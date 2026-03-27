@@ -271,8 +271,7 @@ steps:
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
-          FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "📦 Build complete ($FILES files). Validating..." --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔍 Code steps done. Running validation checks..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -326,7 +325,7 @@ steps:
           if [ -n "$CTO_TARGET" ]; then
           PY=$(find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
           TESTS=$(cd "$LOBSTER_ARG_WORKSPACE" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "? passed")
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ Validated: $PY py files, $TESTS" --json 2>/dev/null || true
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ Build validated: $PY py files, $TESTS. Registering agent..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
