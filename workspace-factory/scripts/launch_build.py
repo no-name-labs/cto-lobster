@@ -180,10 +180,14 @@ def main():
     p.add_argument("--notify-topic-id", default="", help="(deprecated) notifications handled by lobster")
     p.add_argument("--test-cmd", default="python3 -m pytest -q", help="Test runner command")
     p.add_argument("--timeout", type=int, default=7200, help="Max runtime in seconds (default: 2h)")
+    p.add_argument("--_background", action="store_true", help=argparse.SUPPRESS)  # internal: run pipeline directly
     args = p.parse_args()
 
     root = find_openclaw_root()
     factory = f"{root}/workspace-factory"
+
+    # If called with --_background, skip spawn and run pipeline directly
+    is_background = args._background
 
     # Auto-resolve CTO notification target from openclaw.json binding
     notify_chat = ""
@@ -305,45 +309,54 @@ def main():
     if args.prompts_dir:
         prompt_count = len(list(Path(args.prompts_dir).glob("*.txt")))
 
-    # Self-daemonize: fork so parent returns immediately (CTO's session unlocks)
-    pid = os.fork()
-    if pid > 0:
-        # Parent — return immediately with launch confirmation
+    # Build env with LOBSTER_ARG_* vars
+    lobster_env = os.environ.copy()
+    for k, v in lobster_args.items():
+        lobster_env[f"LOBSTER_ARG_{k.upper()}"] = str(v)
+
+    # ── SPAWN OR RUN ──────────────────────────────────────────
+    log_dir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    if not is_background:
+        # Parent process — spawn ourselves as detached subprocess and return immediately
+        log_path = str(log_dir / "launch_build.log")
+        bg_cmd = [
+            sys.executable, __file__,
+            "--action", args.action,
+            "--agent-id", args.agent_id or "",
+            "--prompts-dir", args.prompts_dir or "",
+            "--chat-id", args.chat_id,
+            "--topic-id", args.topic_id,
+            "--test-cmd", args.test_cmd,
+            "--timeout", str(args.timeout),
+            "--_background",
+        ]
+        if args.repo_url:
+            bg_cmd += ["--repo-url", args.repo_url]
+
+        with open(log_path, "w") as lf:
+            proc = subprocess.Popen(
+                bg_cmd,
+                stdout=lf,
+                stderr=lf,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                env=lobster_env,
+                cwd=factory,
+            )
+
         print(json.dumps({
             "ok": True,
             "status": "launched",
-            "pid": pid,
+            "pid": proc.pid,
             "agent_id": args.agent_id or "",
             "prompts": prompt_count,
-            "progress_file": f"{root}/workspace-factory/.cto-brain/runtime/build_progress.json",
+            "progress_file": str(log_dir / "build_progress.json"),
         }))
         return 0
-    # Child — continue with pipeline execution
-    # Detach from parent's session
-    os.setsid()
-    # Redirect stdin/stdout/stderr to prevent broken pipe after parent exits
-    devnull = os.open(os.devnull, os.O_RDWR)
-    os.dup2(devnull, 0)  # stdin
-    # Keep stdout/stderr going to a log file so we can debug
-    log_dir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = os.open(str(log_dir / "launch_build.log"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-    os.dup2(log_file, 1)  # stdout → log file
-    os.dup2(log_file, 2)  # stderr → log file
-    os.close(devnull)
-    os.close(log_file)
 
-    # Notify start
-    log(f"🚀 Launching {args.action} pipeline for {args.agent_id or 'system'}")
-    log(f"Lobster: {lobster_file}")
-    log(f"Prompts: {prompt_count} files")
-    notify(
-        notify_chat, notify_topic,
-        f"🚀 <b>Build started: {args.agent_id or 'diagnostic'}</b>\n"
-        f"Action: {args.action}\n"
-        f"Prompt files: {prompt_count}\n"
-        f"Timeout: {args.timeout // 60}m"
-    )
+    # ── BACKGROUND MODE — run pipeline directly ──────────────
 
     # Init progress tracking
     progress = {
@@ -360,11 +373,6 @@ def main():
         "updated_at": "",
     }
     write_progress(root, progress)
-
-    # Build env with LOBSTER_ARG_* vars so shell commands in .lobster can read them
-    lobster_env = os.environ.copy()
-    for k, v in lobster_args.items():
-        lobster_env[f"LOBSTER_ARG_{k.upper()}"] = str(v)
 
     # Launch lobster
     started = time.time()
