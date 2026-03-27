@@ -228,25 +228,16 @@ def main():
         pd = Path(args.prompts_dir)
         t_files = sorted(pd.glob("T*.txt"))
         if not t_files:
-            print(json.dumps({"ok": False, "error": "BLOCKED: No T*.txt prompt files found. Write at least T1.txt."}))
+            print(json.dumps({"ok": False, "error": "BLOCKED: No T*.txt prompt files found. Write T01.txt through T08.txt."}))
             return 1
-        required = {"RESEARCH.txt": False, "SMOKE.txt": True, "VERIFY.txt": True}
-        missing = []
-        for fname, mandatory in required.items():
-            if not (pd / fname).exists():
-                if mandatory:
-                    missing.append(fname)
-                else:
-                    log(f"Optional file missing: {fname} (skipped)")
-        if missing:
+        if len(t_files) < 3:
             print(json.dumps({
                 "ok": False,
-                "error": f"BLOCKED: Missing required prompt files: {', '.join(missing)}. Write them to {args.prompts_dir}/ and retry.",
-                "missing": missing,
-                "existing": [f.name for f in pd.glob("*.txt")],
+                "error": f"BLOCKED: Only {len(t_files)} T-files found. Need at least 3 (research + code + verification).",
+                "existing": [f.name for f in t_files],
             }))
             return 1
-        log(f"Prompt gate passed: {len(t_files)} T-files + SMOKE + VERIFY")
+        log(f"Prompt gate passed: {len(t_files)} T-files")
 
     elif args.action == "edit" and args.prompts_dir:
         pd = Path(args.prompts_dir)

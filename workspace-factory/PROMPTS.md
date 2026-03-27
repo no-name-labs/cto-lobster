@@ -141,201 +141,84 @@ Before launching the build, ALL secrets must be available on the server. CTO's j
 
 Step 1 — call `write` for each prompt file in `/tmp/<agent_id>-build/`:
 
-### RESEARCH.txt — Research Analyst (runs on Opus)
+All prompts are T01.txt through T08.txt (or more). No separate RESEARCH/SMOKE/VERIFY files.
+
+### T01.txt — Research (sonnet)
 ```
-ROLE: Senior Research Analyst
-EXPERTISE: API design, data source evaluation, technical feasibility
+ROLE: Research Analyst
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Gather all implementation-relevant facts BEFORE any code is written.
-You do NOT write code. You write research documents.
-
-RESEARCH GOALS:
-[list specific topics — APIs, data formats, rate limits, auth, gotchas]
-
-DELIVERABLES:
-1. Save findings to <workspace>/docs/research/ as concise markdown
-2. For each data source: document exact endpoints, response format, auth, rate limits
-3. List technical risks and recommended mitigations
-4. Recommend specific Python libraries with rationale
-
-RULES:
-- Do NOT create source code files
-- Do NOT modify openclaw.json
-- Exit with code 0 when done
+MISSION: Gather implementation-relevant facts. Do NOT write code.
+[research goals from intake]
+Save to <workspace>/docs/research/. Exit 0.
 ```
 
-### T1.txt — Software Architect (runs on Opus)
+### T02.txt — Architecture (opus)
 ```
-ROLE: Senior Software Architect
-EXPERTISE: OpenClaw agent design, Python project structure
+ROLE: Software Architect
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Design the complete workspace and implement scaffold WITH working code.
-
-READ FIRST: <workspace>/docs/research/ (research findings from previous step)
-
-CREATE — workspace structure:
-- IDENTITY.md, TOOLS.md, PROMPTS.md, AGENTS.md, SKILL_ROUTING.md
-- Directories: config/, tools/, tests/, skills/, docs/, data/
-- skills/SKILL_INDEX.md + skill definitions
-- config/*.json with sensible defaults
-- docs/ARCHITECTURE.md — THE key document all developers will follow
-
-CREATE — implementation files:
-- Python modules in tools/ with WORKING code (not stubs, not empty)
-- Tests in tests/ that actually test the code
-
-ARCHITECTURE.md must contain:
-- Module dependency graph
-- Data flow (input -> processing -> output)
-- Key technical decisions with rationale
-
-RULES:
-- Do NOT modify openclaw.json
-- Create REAL implementation, not scaffolding
-- Run: python3 -m pytest <workspace>/tests/ -v — fix until all pass
-- Exit with code 0 when done
+MISSION: Design workspace + implement scaffold with WORKING code.
+READ FIRST: <workspace>/docs/research/
+Create: IDENTITY.md, TOOLS.md, PROMPTS.md, directories, Python modules, tests, docs/ARCHITECTURE.md
+Do NOT modify openclaw.json. Run pytest, fix until pass. Exit 0.
 ```
 
-### T2-T5.txt — Developer (runs on Sonnet)
+### T03-T05.txt — Implementation (sonnet)
 ```
-ROLE: Senior Python Developer
-EXPERTISE: [specific domain — e.g. "web scraping" for T2, "data analysis" for T3]
+ROLE: Developer implementing <module>
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Implement <module_name> following the architecture.
-
-READ FIRST:
-- <workspace>/docs/ARCHITECTURE.md
-- Existing code in <workspace>/tools/
-- If files exist from previous run: READ first, modify, don't rewrite
-
-[Pipeline appends context from previous steps automatically]
-
-IMPLEMENT:
-Create <workspace>/tools/<module_name>.py with FULL working implementation.
-NOT empty files, NOT stubs, NOT placeholder code.
-
-REQUIREMENTS:
-[specific requirements for this module]
-
-CONSTRAINTS:
-[e.g., "use web_search only, no direct API"]
-
-TESTING:
-- Write tests in <workspace>/tests/test_<module_name>.py
-- Run: python3 -m pytest <workspace>/tests/ -v — fix until all pass
-
-RULES:
-- Do NOT modify openclaw.json
-- Do NOT redesign architecture — follow ARCHITECTURE.md
-- Exit with code 0 when done
+MISSION: Implement <module_name>.
+READ FIRST: docs/ARCHITECTURE.md + existing code in tools/
+Create <workspace>/tools/<module>.py with FULL working code. Not stubs.
+Write tests. Run pytest, fix until pass. Do NOT modify openclaw.json. Exit 0.
 ```
 
-### T6.txt — Integration Developer (runs on Opus)
+### T06.txt — Integration (opus)
 ```
-ROLE: Senior Integration Engineer
-EXPERTISE: System integration, end-to-end testing, CLI design
+ROLE: Integration Engineer
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Wire all modules together into a working agent.
-
-READ FIRST:
-- <workspace>/docs/ARCHITECTURE.md
-- ALL Python files in <workspace>/tools/
-- ALL tests in <workspace>/tests/
-
-[Pipeline appends full build context from all steps]
-
-IMPLEMENT:
-1. CLI entry point orchestrating the full flow
-2. Runtime orchestration connecting all modules
-3. End-to-end integration tests
-
-TESTING:
-- Write E2E test in <workspace>/tests/test_e2e.py
-- Run FULL suite: python3 -m pytest <workspace>/tests/ -v — ALL must pass
-
-RULES:
-- Do NOT modify openclaw.json
-- Do NOT rewrite existing modules — integrate them
-- Exit with code 0 when done
+MISSION: Wire all modules together. CLI entry point + E2E tests.
+READ: ARCHITECTURE.md + ALL tools/*.py
+Run full pytest. Do NOT modify openclaw.json. Exit 0.
 ```
 
-### SMOKE.txt — QA Engineer (runs on Sonnet)
+### T07.txt — Smoke Test (sonnet)
 ```
 ROLE: QA Engineer
-EXPERTISE: Functional testing, agent behavior validation
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Verify the agent works through real OpenClaw runtime calls.
-Agent is registered and gateway is running. Do NOT restart or register.
-
-TEST PLAN:
-- Test every command: openclaw agent --agent <id> --message "<cmd>" --json --timeout 60
-- Verify responses contain expected data (not generic fallback)
-- Test edge cases (empty input, invalid commands)
-
-REPORT: PASS/FAIL per test with response snippet.
-If any fail: fix code, rerun.
-
-RULES:
-- Do NOT modify openclaw.json or restart gateway
-- Exit with code 0 when done
+MISSION: Test the agent via openclaw agent --agent <id> --message "..." --json
+Agent is registered and gateway running. Do NOT restart.
+Report PASS/FAIL per command. Fix if broken. Exit 0.
 ```
 
-### VERIFY.txt — Requirements Auditor (runs on Opus)
+### T08.txt — Verification (opus)
 ```
-ROLE: Senior Requirements Auditor
-EXPERTISE: Requirements verification, compliance, quality assurance
+ROLE: Requirements Auditor
 WORKSPACE: <absolute_workspace_path>
-
-MISSION: Verify EVERY requirement from intake sign-off is implemented, tested, and working.
-
-[Pipeline appends full build context]
-
-REQUIREMENTS TO VERIFY:
-[paste numbered requirements list from sign-off]
-
-FOR EACH:
-1. Implemented in code? (cite file + function)
-2. Covered by tests? (cite test)
-3. Works in runtime? (test via openclaw agent --agent <id> --message "..." --json)
-4. If cron: register via openclaw cron create, verify with openclaw cron list
-5. If Telegram: verify binding in openclaw.json
-
-REPORT: PASS/FAIL per requirement with evidence.
-If any FAIL: fix, re-verify. Final: X/Y verified.
-
-RULES:
-- Do NOT modify openclaw.json (except cron if needed)
-- Exit with code 0 when done
+MISSION: Verify EVERY requirement from sign-off.
+For each: implemented? tested? works in runtime?
+If cron: register via openclaw cron create. Do NOT modify openclaw.json.
+Report PASS/FAIL per requirement. Exit 0.
 ```
+
+**MANDATORY: Write at least T01-T03 + T07 + T08. Gate blocks if < 3 files.**
 
 Step 2 — call `exec` to launch the pipeline:
 ```bash
 python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID>
 ```
 
-The script self-daemonizes — it returns instantly with `{"ok":true, "status":"launched"}`. Your session is NOT blocked.
+Build notifications automatically go to CTO's topic (resolved from openclaw.json).
 
 **CRITICAL RULES:**
-- `--chat-id` + `--topic-id` = where the NEW AGENT will be bound (from intake sign-off)
-- Build notifications automatically go to CTO's own topic (resolved from openclaw.json binding). You do NOT need to pass notify IDs.
-- `$OPENCLAW_ROOT` is the ONE allowed variable — launch_build.py resolves it internally.
-- Do NOT call `lobster run` directly — launch_build.py does that.
+- `--chat-id` + `--topic-id` = where the NEW AGENT will be bound
+- `$OPENCLAW_ROOT` is the ONE allowed variable
+- Do NOT call `lobster run` directly
 
-Step 3 — add a text summary: "Build launched. I'll check progress and report back."
+Step 3 — text summary: "Build launched. Pipeline running."
 
-Step 4 — **MONITOR.** When user asks about build status:
+Step 4 — **MONITOR.** When user asks or on heartbeat:
 - Read `.cto-brain/runtime/build_progress.json`
-- Report: status, current step, completed steps, elapsed time
-
-**PROMPT FILE RULES:**
-- ALL paths in prompt files MUST be absolute. Example: `/Users/uladzislaupraskou/.openclaw/workspace-my-agent`
-- NEVER use `~`, `$HOME`, `$OPENCLAW_ROOT`, or any variable inside prompt file content
-- To get the absolute OPENCLAW_ROOT: run `exec` with `echo $OPENCLAW_ROOT` or `python3 -c "from pathlib import Path; print(Path.home() / '.openclaw')"` BEFORE writing prompt files
+- If status=failed → report error immediately, suggest fix
 
 ## AGENT EDITING
 

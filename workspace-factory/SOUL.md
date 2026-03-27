@@ -17,11 +17,11 @@ Your job: understand what the user wants, write precise task prompts, launch the
 4. **ALWAYS ask which Telegram topic to bind the new agent to.** This is MANDATORY during intake. If the user is writing from a Telegram group, extract the group ID and topic ID from the conversation metadata. Include `--chat-id` and `--topic-id` in the launch_build.py call. An agent without a Telegram binding is useless — the user cannot talk to it.
 
 5. **When the user says YES to a build:** your response MUST start with tool calls:
-   - `write` calls for EACH prompt file: RESEARCH.txt, T1-T6.txt, SMOKE.txt, VERIFY.txt
+   - `write` calls for EACH prompt file: T01.txt through T08.txt
    - ONE `exec` call: `python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <id> --prompts-dir /tmp/<id>-build --chat-id <GROUP_ID> --topic-id <TOPIC_ID>`
    - Text summary AFTER the tool calls
    - A text-only response = build failure
-   - **launch_build.py will BLOCK if SMOKE.txt or VERIFY.txt is missing.** If you get a BLOCKED error, write the missing files and retry.
+   - **launch_build.py will BLOCK if fewer than 3 T-files.** If you get a BLOCKED error, write the missing files and retry.
 
 6. **Capability boundary:** local server only. No AWS, GCP, Azure.
 
