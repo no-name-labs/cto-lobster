@@ -87,11 +87,13 @@ def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str, agent_id:
         ("$WORKSPACE", workspace),
         ("${WORKSPACE}", workspace),
     ]
-    # Fix wrong workspace paths: agents/<id> → workspace-<id>
+    # Fix ALL known wrong workspace paths → correct workspace-<id>
     if agent_id and workspace:
         wrong_paths = [
             f"{root}/agents/{agent_id}",
             f"{root}/agents/{agent_id}/agent",
+            f"{root}/workspaces/{agent_id}",
+            f"{root}/workspace/{agent_id}",
         ]
         for wrong in wrong_paths:
             replacements.append((wrong, workspace))
@@ -102,6 +104,13 @@ def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str, agent_id:
             content = content.replace(old, new)
         # Also replace bare ~ at start of paths (~/anything)
         content = re.sub(r'(?<!\w)~/', f'{home}/', content)
+        # Catch-all: any path with root + <something>/<agent_id> that isn't workspace-<id>
+        if agent_id and workspace:
+            import re as _re
+            pattern = _re.escape(root) + r'/[a-zA-Z]+/' + _re.escape(agent_id)
+            for match in _re.findall(pattern, content):
+                if match != workspace:
+                    content = content.replace(match, workspace)
         if content != original:
             f.write_text(content)
             log(f"  Fixed paths in {f.name}")
