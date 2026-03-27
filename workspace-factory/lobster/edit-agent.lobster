@@ -52,6 +52,16 @@ steps:
         echo "{\"ok\":true}"
       '
 
+  - id: notify_fixing
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        if [ -n "$CTO_TARGET" ]; then
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "⏳ Applying fix to $LOBSTER_ARG_AGENT_ID..." --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   - id: codex_fix
     command: >
       bash -c '
@@ -149,6 +159,16 @@ steps:
         echo "{\"ok\":true}"
       '
 
+  - id: notify_smoking
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        if [ -n "$CTO_TARGET" ]; then
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Running smoke test for $LOBSTER_ARG_AGENT_ID..." --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   - id: smoke_test
     command: >
       bash -c '
@@ -164,6 +184,16 @@ steps:
         echo "## YOUR TASK:" >> "$TMPF"
         cat "$PFILE" >> "$TMPF"
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 1800 || true
+        echo "{\"ok\":true}"
+      '
+
+  - id: notify_verifying
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        if [ -n "$CTO_TARGET" ]; then
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "📝 Verifying requirements for $LOBSTER_ARG_AGENT_ID..." --json 2>/dev/null || true
+        fi
         echo "{\"ok\":true}"
       '
 
