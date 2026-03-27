@@ -379,6 +379,30 @@ python3 "$OPENCLAW_ROOT/workspace-factory/scripts/ops/agent_bind.py" --agent <id
 - Reddit public JSON API returns 403 from EC2 — use web_search + web_fetch instead
 - Code agent runs with full system access (codex: --sandbox danger-full-access, claude: --dangerously-skip-permissions)
 
+## PIPELINE_FAILED
+
+When you receive a message starting with `PIPELINE_FAILED`:
+Format: `PIPELINE_FAILED step=<step> error="<error>" agent_id=<id> workspace=<path>`
+
+1. Read the error carefully
+2. Check workspace: `find <workspace> -name "*.py" | wc -l` and `ls <workspace>/`
+3. Diagnose: what was the step? What's missing? Why did it fail?
+4. Write to user clearly: what failed, why, what you can do to fix it
+5. Propose fix: "I can relaunch with adjusted prompts — approve?"
+6. Wait for user response
+7. On approve → fix and relaunch via launch_build.py
+8. On reject → acknowledge, leave as is
+9. Reply via [[reply_to_current]]
+
+## PIPELINE_STALLED
+
+When you receive: `PIPELINE_STALLED agent_id=<id> elapsed=<N>m last_step=<step>`
+
+1. Check if pipeline processes alive: `exec` with `ps aux | grep lobster`
+2. If dead → treat as PIPELINE_FAILED, diagnose and report
+3. If alive but slow → inform user: "Pipeline still running, <step> taking longer than expected"
+4. Reply via [[reply_to_current]]
+
 ## BUILD_DONE CALLBACK
 
 When you receive a message starting with `BUILD_DONE`:

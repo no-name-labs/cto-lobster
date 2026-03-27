@@ -140,9 +140,15 @@ steps:
         BLOCK=""
         [ ! -f "$WS/IDENTITY.md" ] && BLOCK="$BLOCK IDENTITY.md"
         for d in tools tests; do [ ! -d "$WS/$d" ] && BLOCK="$BLOCK $d/"; done
-        if [ -n "$BLOCK" ]; then echo "{\"ok\":false,\"missing\":\"$(echo $BLOCK | xargs)\"}" >&2; exit 1; fi
+        if [ -n "$BLOCK" ]; then echo "{\"ok\":false,\"missing\":\"$(echo $BLOCK | xargs)\"}" >&2
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=workspace_check error=missing:$(echo $BLOCK | xargs) agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          exit 1; fi
         PY_COUNT=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" | wc -l | tr -d " ")
-        if [ "$PY_COUNT" -eq 0 ]; then echo "{\"ok\":false,\"error\":\"BLOCKED: No Python files in workspace.\"}" >&2; exit 1; fi
+        if [ "$PY_COUNT" -eq 0 ]; then echo "{\"ok\":false,\"error\":\"BLOCKED: No Python files in workspace.\"}" >&2
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=workspace_check error=missing:python_files agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          exit 1; fi
         echo "{\"ok\":true,\"py_files\":$PY_COUNT}"
       '
 
@@ -152,7 +158,10 @@ steps:
         WS="$LOBSTER_ARG_WORKSPACE"
         if [ -d "$WS/tests" ]; then
           cd "$WS" && eval "$LOBSTER_ARG_TEST_CMD" 2>&1
-          if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2; exit 1; fi
+          if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2
+            CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=unit_tests error=tests_failed agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+            exit 1; fi
           echo "{\"ok\":true,\"tests\":\"passed\"}"
         else
           echo "{\"ok\":true,\"tests\":\"skipped\"}"
@@ -184,7 +193,11 @@ steps:
         cd "$LOBSTER_ARG_OPENCLAW_ROOT"
         RESULT=$(openclaw config validate --json 2>&1 | tail -1)
         echo "$RESULT"
-        echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || exit 1
+        echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || {
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=validate_config error=config_invalid agent_id=$LOBSTER_ARG_AGENT_ID workspace=$LOBSTER_ARG_WORKSPACE" --json 2>/dev/null || true
+          exit 1
+        }
       '
 
   - id: notify_registered
