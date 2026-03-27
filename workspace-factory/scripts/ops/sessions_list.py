@@ -26,17 +26,19 @@ def main():
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
-        for line in r.stdout.splitlines():
-            if line.strip().startswith("{"):
-                data = json.loads(line)
-                sessions = data.get("sessions", [])
-                print(json.dumps({
-                    "ok": True,
-                    "action": "sessions_list",
-                    "count": len(sessions),
-                    "sessions": [{"agent": s.get("agentId"), "model": s.get("model"), "status": s.get("status"), "age_seconds": s.get("ageMs", 0) // 1000} for s in sessions],
-                }))
-                return 0
+        # Find JSON object in output (may be multi-line, skip non-JSON prefix lines)
+        raw = r.stdout
+        idx = raw.find("{")
+        if idx >= 0:
+            data = json.loads(raw[idx:])
+            sessions = data.get("sessions", [])
+            print(json.dumps({
+                "ok": True,
+                "action": "sessions_list",
+                "count": len(sessions),
+                "sessions": [{"agent": s.get("agentId"), "model": s.get("model"), "status": s.get("status"), "age_seconds": s.get("ageMs", 0) // 1000} for s in sessions],
+            }))
+            return 0
         print(json.dumps({"ok": False, "error": "No JSON output"}))
         return 1
     except Exception as e:
