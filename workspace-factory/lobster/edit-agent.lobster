@@ -140,21 +140,26 @@ steps:
   - id: restart_for_smoke
     command: >
       bash -c '
-        if [ "$(uname)" = "Darwin" ]; then
-          launchctl bootout gui/$(id -u)/ai.openclaw.gateway 2>/dev/null || true
-          sleep 2
-          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || openclaw gateway install 2>/dev/null || true
-        else
-          openclaw gateway stop 2>&1 || true
-          sleep 2
-          openclaw gateway start 2>&1 || true
+        STATUS=$(openclaw gateway status 2>&1 || true)
+        if echo "$STATUS" | grep -q "probe: ok"; then
+          echo "{\"ok\":true,\"gateway_restart\":\"skipped\"}"
+          exit 0
         fi
+        openclaw gateway stop 2>&1 || true
+        sleep 3
+        openclaw gateway start 2>&1 || true
         sleep 6
-        for i in 1 2 3; do
+        for i in 1 2 3 4 5; do
           STATUS=$(openclaw gateway status 2>&1 || true)
           if echo "$STATUS" | grep -q "probe: ok"; then echo "{\"ok\":true}"; exit 0; fi
           sleep 3
         done
+        if [ "$(uname)" = "Darwin" ]; then
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
+          sleep 5
+          STATUS=$(openclaw gateway status 2>&1 || true)
+          if echo "$STATUS" | grep -q "probe: ok"; then echo "{\"ok\":true}"; exit 0; fi
+        fi
         echo "{\"ok\":true,\"gateway_restart\":\"soft_fail\"}"
       '
 
