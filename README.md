@@ -95,6 +95,50 @@ Or via CLI:
 openclaw agent --agent cto-factory --message "Build me a weather alert agent"
 ```
 
+## What CTO Can Do
+
+### Build Agents
+- Create new agents from a simple description — full pipeline: research, architecture, implementation, testing, registration, deployment
+- Edit existing agents — describe changes, CTO handles the rest
+- Install community agents from GitHub repos (e.g. [Notes Agent](https://github.com/smart-spine/openclaw-notes-agent))
+- Handles secrets collection (API keys, tokens) during intake
+- Manages Telegram binding for each agent
+
+### Manage OpenClaw (17 ops scripts)
+
+**Read-only — ask CTO anytime:**
+| What | Example |
+|------|---------|
+| Gateway health | "Is the gateway running?" |
+| Config validation | "Is my config valid?" |
+| List agents | "What agents do I have?" |
+| List cron jobs | "Show me all scheduled jobs" |
+| Agent sessions | "Show active sessions" |
+| Gateway logs | "Show me recent gateway logs" |
+| Config backups | "List my config backups" |
+
+**Mutating — CTO asks for confirmation:**
+| What | Example |
+|------|---------|
+| Create cron job | "Set up daily cron for my-agent at 9am UTC" |
+| Delete cron job | "Remove that cron job" |
+| Enable/disable cron | "Pause the daily scan" |
+| Restart gateway | "Restart the gateway" |
+| Bind agent to topic | "Move my-agent to topic 1655" |
+| Unbind agent | "Remove Telegram binding for my-agent" |
+| Delete agent | "Remove old-agent completely" |
+| Change agent model | "Switch my-agent to Opus" |
+| Set environment variable | "Add GITHUB_TOKEN to .env" |
+| Toggle plugin | "Disable the telegram plugin" |
+| Backup config | "Back up my config before changes" |
+| Restore config | "Restore config from yesterday's backup" |
+
+### Monitor Builds
+- Real-time Telegram notifications at every pipeline step
+- Progress tracking via `build_progress.json`
+- Automatic failure detection and reporting
+- Beautiful per-step reports from CTO
+
 ## Architecture
 
 ### Pipelines
