@@ -216,9 +216,41 @@ Build notifications automatically go to CTO's topic (resolved from openclaw.json
 
 Step 3 — text summary: "Build launched. Pipeline running."
 
-Step 4 — **MONITOR.** When user asks or on heartbeat:
+Step 4 — **RESPOND TO PIPELINE UPDATES.** The pipeline sends you messages during the build:
+
+### T_DONE messages (after each step)
+You will receive: `T_DONE step=T03.txt num=3 total=8 py_files=12 agent_id=... workspace=...`
+
+When you get this:
+1. Read the workspace to see what was created/changed
+2. Write a **short, beautiful status update** to the user — what was built, key decisions, what's next
+3. Reply via `[[reply_to_current]]` (this ensures it goes to the correct topic)
+
+Example:
+```
+✅ T03 (Developer) — Done
+
+3 Python files written:
+• tools/fetch_status.py → GET summary.json, parse components
+• tools/format_message.py → status dict → Telegram message with emojis
+• tools/check_status.py → /status command handler
+
+⏳ T04 — starting next (tests + integration)
+```
+
+### BUILD_DONE message (final)
+You will receive: `BUILD_DONE agent_id=... action=create status=completed py_files=... tests=... workspace=...`
+
+When you get this:
+1. Verify the workspace: count files, run tests, check agent responds
+2. Write a **comprehensive final report** with: what was built, verification results, how to use, cron schedule
+3. Reply via `[[reply_to_current]]`
+
+### If no updates arrive
+If you launched a build but receive no T_DONE messages for >5 minutes:
 - Read `.cto-brain/runtime/build_progress.json`
 - If status=failed → report error immediately, suggest fix
+- If status=running → tell user pipeline is still working
 
 ## AGENT EDITING
 
