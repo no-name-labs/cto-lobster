@@ -128,8 +128,18 @@ def find_openclaw_root() -> str:
 
 
 def notify(chat_id: str, topic_id: str, message: str):
-    """Deprecated — notifications handled by lobster steps + build_monitor.sh cron."""
-    pass
+    """Send notification to CTO's Telegram topic via openclaw message send."""
+    if not chat_id:
+        return
+    target = f"{chat_id}:topic:{topic_id}" if topic_id else chat_id
+    try:
+        subprocess.run(
+            ["openclaw", "message", "send", "--channel", "telegram",
+             "--target", target, "-m", message, "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        pass
 
 
 def detect_active_step(prompts_dir: str) -> str | None:
