@@ -85,7 +85,9 @@ steps:
           case "$FNAME" in
             T01*) [ -f "$IDDIR/T01-researcher.md" ] && cat "$IDDIR/T01-researcher.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
             T02*) [ -f "$IDDIR/T02-architect.md" ] && cat "$IDDIR/T02-architect.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
-            T03*|T04*|T05*) [ -f "$IDDIR/T03-developer.md" ] && cat "$IDDIR/T03-developer.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
+            T03*) [ -f "$IDDIR/T03-developer.md" ] && cat "$IDDIR/T03-developer.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
+            T04*) [ -f "$IDDIR/T04-developer-delivery.md" ] && cat "$IDDIR/T04-developer-delivery.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
+            T05*) [ -f "$IDDIR/T05-developer-scheduler.md" ] && cat "$IDDIR/T05-developer-scheduler.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
             T06*) [ -f "$IDDIR/T06-integrator.md" ] && cat "$IDDIR/T06-integrator.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
             T07*) [ -f "$IDDIR/T07-qa.md" ] && cat "$IDDIR/T07-qa.md" >> "$TMPF" && echo "" >> "$TMPF" ;;
             T08*) [ -f "$IDDIR/T08-auditor.md" ] && cat "$IDDIR/T08-auditor.md" >> "$TMPF" && echo "" >> "$TMPF" ;;

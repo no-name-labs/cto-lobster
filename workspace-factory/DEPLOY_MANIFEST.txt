@@ -35,3 +35,11 @@ scripts/ops/agent_set_model.py
 scripts/ops/sessions_list.py
 scripts/ops/env_set.py
 scripts/ops/cron_toggle.py
+identities/T01-researcher.md
+identities/T02-architect.md
+identities/T03-developer.md
+identities/T04-developer-delivery.md
+identities/T05-developer-scheduler.md
+identities/T06-integrator.md
+identities/T07-qa.md
+identities/T08-auditor.md
