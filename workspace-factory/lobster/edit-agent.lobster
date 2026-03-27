@@ -50,13 +50,7 @@ steps:
   - id: notify_start
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔧 Editing $LOBSTER_ARG_AGENT_ID..." --json 2>/dev/null || true
         fi
@@ -73,13 +67,7 @@ except: pass
   - id: notify_fix
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔧 Fix applied for $LOBSTER_ARG_AGENT_ID. Validating..." --json 2>/dev/null || true
         fi
@@ -111,13 +99,7 @@ except: pass
   - id: notify_tests
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
           if [ -d "$WS/tests" ]; then
@@ -154,13 +136,7 @@ except: pass
   - id: notify_restart
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔄 Gateway restarted. Running smoke test..." --json 2>/dev/null || true
         fi
@@ -182,13 +158,7 @@ except: pass
   - id: notify_smoke
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke test done for $LOBSTER_ARG_AGENT_ID. Verifying requirements..." --json 2>/dev/null || true
         fi
@@ -248,13 +218,7 @@ except: pass
   - id: notify_done
     command: >
       bash -c '
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ $LOBSTER_ARG_AGENT_ID edited and verified." --json 2>/dev/null || true
         fi
@@ -277,13 +241,7 @@ except: pass
         timeout 60 openclaw agent --agent cto-factory \
           --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed chat_id=$LOBSTER_ARG_CHAT_ID topic_id=$LOBSTER_ARG_TOPIC_ID" \
           --json 2>/dev/null || true
-        CTO_TARGET=$(python3 -c "
-import json
-try:
-    d=json.load(open(\"$LOBSTER_ARG_OPENCLAW_ROOT/openclaw.json\"))
-    [print(b[\"match\"][\"peer\"][\"id\"]) for b in d.get(\"bindings\",[]) if b.get(\"agentId\")==\"cto-factory\"]
-except: pass
-" 2>/dev/null | head -1)
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram \
             --target "$CTO_TARGET" \

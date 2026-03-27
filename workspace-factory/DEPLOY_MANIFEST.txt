@@ -28,3 +28,4 @@ scripts/ops/cron_delete.py
 scripts/ops/cron_list.py
 scripts/ops/gateway_restart.py
 scripts/ops/gateway_status.py
+scripts/resolve_cto_topic.sh
