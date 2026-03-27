@@ -17,7 +17,11 @@ def main():
     chat_id = sys.argv[4] if len(sys.argv) > 4 else ""
     topic_id = sys.argv[5] if len(sys.argv) > 5 else ""
 
-    d = json.loads(config_path.read_text())
+    import re as _re
+    raw = config_path.read_text()
+    # Fix trailing commas (code agent sometimes adds them)
+    raw = _re.sub(r',(\s*[}\]])', r'\1', raw)
+    d = json.loads(raw)
 
     # --- Register agent ---
     agents = d.setdefault("agents", {}).setdefault("list", [])
