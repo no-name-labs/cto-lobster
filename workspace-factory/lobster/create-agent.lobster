@@ -278,7 +278,10 @@ steps:
           WS="$LOBSTER_ARG_WORKSPACE"
           PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
           TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 || echo "no tests")
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS chat_id=$LOBSTER_ARG_CHAT_ID topic_id=$LOBSTER_ARG_TOPIC_ID workspace=$WS" --json 2>/dev/null || true
+          ELAPSED=$(($(date +%s) - $(stat -f %m "$WS/IDENTITY.md" 2>/dev/null || date +%s)))
+          ELAPSED_MIN=$((ELAPSED / 60))
+          MSG="🎉 $LOBSTER_ARG_AGENT_ID — BUILD COMPLETE | ${ELAPSED_MIN}m | $PY py files | $TESTS | Telegram topic $LOBSTER_ARG_TOPIC_ID"
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
