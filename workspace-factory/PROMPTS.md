@@ -143,64 +143,56 @@ Step 1 — call `write` for each prompt file in `/tmp/<agent_id>-build/`:
 
 All prompts are T01.txt through T08.txt (or more). No separate RESEARCH/SMOKE/VERIFY files.
 
-### T01.txt — Research (sonnet)
+### What CTO writes in T*.txt files
+
+Identity and process instructions are loaded AUTOMATICALLY from `identities/` directory by lobster. CTO only writes the **task-specific part** — what to research, what to build, what requirements to verify.
+
+### T01.txt — just the task
 ```
-ROLE: Research Analyst
 WORKSPACE: <absolute_workspace_path>
-MISSION: Gather implementation-relevant facts. Do NOT write code.
-[research goals from intake]
-Save to <workspace>/docs/research/. Exit 0.
+Research: [what to investigate — APIs, data sources, libraries]
 ```
 
-### T02.txt — Architecture (opus)
+### T02.txt — just the task
 ```
-ROLE: Software Architect
 WORKSPACE: <absolute_workspace_path>
-MISSION: Design workspace + implement scaffold with WORKING code.
-READ FIRST: <workspace>/docs/research/
-Create: IDENTITY.md, TOOLS.md, PROMPTS.md, directories, Python modules, tests, docs/ARCHITECTURE.md
-Do NOT modify openclaw.json. Run pytest, fix until pass. Exit 0.
+Agent: <agent_id>
+Build: [what modules to create, what config, what skills]
 ```
 
-### T03-T05.txt — Implementation (sonnet)
+### T03-T05.txt — just the task
 ```
-ROLE: Developer implementing <module>
 WORKSPACE: <absolute_workspace_path>
-MISSION: Implement <module_name>.
-READ FIRST: docs/ARCHITECTURE.md + existing code in tools/
-Create <workspace>/tools/<module>.py with FULL working code. Not stubs.
-Write tests. Run pytest, fix until pass. Do NOT modify openclaw.json. Exit 0.
+Module: <module_name>
+Requirements: [what this module must do]
+Constraints: [e.g. "use web_search, no direct API"]
 ```
 
-### T06.txt — Integration (opus)
+### T06.txt — just the task
 ```
-ROLE: Integration Engineer
 WORKSPACE: <absolute_workspace_path>
-MISSION: Wire all modules together. CLI entry point + E2E tests.
-READ: ARCHITECTURE.md + ALL tools/*.py
-Run full pytest. Do NOT modify openclaw.json. Exit 0.
+Wire: [what modules to connect, what CLI to create]
 ```
 
-### T07.txt — Smoke Test (sonnet)
+### T07.txt — just the task
 ```
-ROLE: QA Engineer
 WORKSPACE: <absolute_workspace_path>
-MISSION: Test the agent via openclaw agent --agent <id> --message "..." --json
-Agent is registered and gateway running. Do NOT restart.
-Report PASS/FAIL per command. Fix if broken. Exit 0.
+Agent: <agent_id>
+Test commands: [list of commands to test]
 ```
 
-### T08.txt — Verification (opus)
+### T08.txt — just the task
 ```
-ROLE: Requirements Auditor
 WORKSPACE: <absolute_workspace_path>
-MISSION: Verify EVERY requirement from sign-off.
-For each: implemented? tested? works in runtime?
-If cron: register via openclaw cron create. Do NOT modify openclaw.json.
-Report PASS/FAIL per requirement. Exit 0.
+Agent: <agent_id>
+Requirements to verify:
+1. [from sign-off]
+2. [from sign-off]
+...
 ```
 
-**MANDATORY: Write at least T01-T03 + T07 + T08. Gate blocks if < 3 files.**
+**MANDATORY: Write at least 3 T-files. Gate blocks if fewer.**
+
 
 Step 2 — call `exec` to launch the pipeline:
 ```bash

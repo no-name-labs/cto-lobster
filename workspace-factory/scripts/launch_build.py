@@ -74,18 +74,19 @@ def write_progress(root: str, progress: dict):
 
 def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str, agent_id: str = ""):
     """Replace unresolved variables and fix wrong workspace paths in prompt files.
-    CTO often writes $OPENCLAW_ROOT, ~/.openclaw, or agents/<id> instead of workspace-<id>.
+    CTO often writes OPENCLAW_ROOT variable refs, ~/.openclaw, or agents/<id> instead of workspace-<id>.
     """
     home = str(Path.home())
     pd = Path(prompts_dir)
+    dollar = "$"
     replacements = [
-        ("$OPENCLAW_ROOT", root),
-        ("${OPENCLAW_ROOT}", root),
+        (dollar + "OPENCLAW_ROOT", root),
+        (dollar + "{OPENCLAW_ROOT}", root),
         ("~/.openclaw", root),
-        ("$HOME/.openclaw", root),
-        ("${HOME}/.openclaw", root),
-        ("$WORKSPACE", workspace),
-        ("${WORKSPACE}", workspace),
+        (dollar + "HOME/.openclaw", root),
+        (dollar + "{HOME}/.openclaw", root),
+        (dollar + "WORKSPACE", workspace),
+        (dollar + "{WORKSPACE}", workspace),
     ]
     # Fix ALL known wrong workspace paths → correct workspace-<id>
     if agent_id and workspace:
@@ -317,7 +318,7 @@ def main():
 
     cmd = ["lobster", "run", "--mode", "tool", "--file", lobster_file, "--args-json", json.dumps(lobster_args)]
 
-    # Sanitize paths in prompt files (fix $OPENCLAW_ROOT, ~/.openclaw, etc.)
+    # Sanitize paths in prompt files (fix OPENCLAW_ROOT refs, ~/.openclaw, etc.)
     if args.prompts_dir:
         sanitize_prompt_paths(args.prompts_dir, root, workspace if workspace else "", args.agent_id or "")
 
