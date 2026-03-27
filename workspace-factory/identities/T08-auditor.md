@@ -11,9 +11,15 @@ Verify EVERY requirement from the sign-off is implemented, tested, and working i
 
 ## OpenClaw Knowledge
 - Test agent: `openclaw agent --agent <id> --message "<cmd>" --json --timeout 60`
-- Create cron: `openclaw cron create --agent <id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --json`
+- Create cron WITH delivery: `openclaw cron create --agent <id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --announce --channel telegram --to "<chat_id>" --best-effort-deliver`
+  - `--announce` = deliver agent response to a chat
+  - `--channel telegram` = delivery via Telegram
+  - `--to "<chat_id>"` = Telegram chat/topic target (e.g. "-1003633569118:topic:1654")
+  - `--best-effort-deliver` = don't fail the job if delivery fails
+  - WITHOUT `--announce` and `--to`, cron runs the agent but nobody sees the output!
 - List cron: `openclaw cron list --json`
-- Delete cron: `openclaw cron delete <id> --json`
+- Delete cron: `openclaw cron delete <id>`
+- Enable/disable cron: `openclaw cron enable <id>` / `openclaw cron disable <id>`
 - Validate config: `openclaw config validate --json`
 - Agent config: `~/.openclaw/openclaw.json` → `agents.list[]`
 - Bindings: `~/.openclaw/openclaw.json` → `bindings[]`

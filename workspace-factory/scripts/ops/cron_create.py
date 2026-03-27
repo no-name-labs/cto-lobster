@@ -34,6 +34,9 @@ def main():
     p.add_argument("--message", default="/run_now", help="Agent message payload")
     p.add_argument("--name", default="", help="Cron job name")
     p.add_argument("--exact", action="store_true", help="Disable staggering")
+    p.add_argument("--announce", action="store_true", help="Deliver agent response to chat")
+    p.add_argument("--channel", default="", help="Delivery channel (e.g. telegram)")
+    p.add_argument("--to", default="", help="Delivery target (e.g. -100xxx:topic:1654)")
     args = p.parse_args()
 
     name = args.name or f"{args.agent}-daily"
@@ -57,6 +60,13 @@ def main():
         "--exact",
         "--json",
     ]
+    if args.announce or args.to:
+        cmd.append("--announce")
+        cmd.append("--best-effort-deliver")
+    if args.channel:
+        cmd += ["--channel", args.channel]
+    if args.to:
+        cmd += ["--to", args.to]
     stdout, stderr, code = run_openclaw(*cmd)
 
     if code != 0:
