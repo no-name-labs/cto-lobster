@@ -35,7 +35,7 @@ def main():
         return 1
 
     action = "enable" if args.enable else "disable"
-    stdout, stderr, code = run_openclaw("cron", action, args.id, "--json")
+    stdout, stderr, code = run_openclaw("cron", action, args.id)
 
     if code != 0:
         print(json.dumps({"ok": False, "error": stderr or stdout}))
