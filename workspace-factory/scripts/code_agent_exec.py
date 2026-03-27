@@ -287,7 +287,9 @@ def send_callback(
     callback_message_template: str | None,
     context: dict,
 ) -> dict:
-    agent_id = normalize_optional(callback_agent_id) or "cto-factory"
+    agent_id = normalize_optional(callback_agent_id)
+    if not agent_id:
+        return {"enabled": False, "sent": False, "reason": "no_callback_configured"}
     session_id = normalize_optional(callback_session_id)
     auto_resolved = False
     auto_reason = None
