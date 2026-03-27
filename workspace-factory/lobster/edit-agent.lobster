@@ -71,7 +71,14 @@ steps:
         echo "---" >> "$TMPF"
         echo "## YOUR TASK (from CTO):" >> "$TMPF"
         cat "$LOBSTER_ARG_PROMPTS_DIR/FIX.txt" >> "$TMPF"
+        WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
+        SNAP_BEFORE=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | md5 2>/dev/null || echo "none")
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 3600 || true
+        SNAP_AFTER=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | md5 2>/dev/null || echo "none")
+        if [ "$SNAP_BEFORE" = "$SNAP_AFTER" ]; then
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ Fix step completed but no files were changed in workspace. Code agent may not have applied the fix." --json 2>/dev/null || true
+        fi
         echo "{\"ok\":true}"
       '
 

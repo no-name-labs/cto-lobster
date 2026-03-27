@@ -376,6 +376,11 @@ def main():
 
     # ── BACKGROUND MODE — run pipeline directly ──────────────
 
+    # Clear stale failure_notified flag from previous runs
+    flag_file = log_dir / "failure_notified"
+    if flag_file.exists():
+        flag_file.unlink()
+
     # Init progress tracking
     progress = {
         "agent_id": args.agent_id or "",

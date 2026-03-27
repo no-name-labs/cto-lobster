@@ -110,7 +110,15 @@ steps:
             T02*|T06*|T08*) MODEL_FLAG="--model claude-opus-4-6" ;;
           esac
           # ── Run code agent ──
+          SNAPSHOT_BEFORE=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
           python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$EXEC_FILE" --timeout 900 $MODEL_FLAG || true
+          # ── Verify code agent actually did something ──
+          SNAPSHOT_AFTER=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
+          if [ "$STEP_NUM" -gt 1 ] && [ "$SNAPSHOT_AFTER" -eq "$SNAPSHOT_BEFORE" ] && [ "$SNAPSHOT_AFTER" -eq 0 ]; then
+            if [ -n "$CTO_TARGET" ]; then
+              openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ [$STEP_NUM/$TOTAL] $FNAME: code agent produced no files. Continuing but workspace may be incomplete." --json 2>/dev/null || true
+            fi
+          fi
           # ── Update context ──
           if [ -d "$CTX" ]; then
             echo "## $FNAME" >> "$CTX/BUILD_DECISIONS.md"
@@ -262,17 +270,16 @@ steps:
     command: >
       bash -c '
         OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "Confirm you are alive. List your commands." --json 2>&1 || true)
-        if echo "$OUTPUT" | grep -q "payloads"; then echo "{\"ok\":true,\"alive\":true}"; else echo "{\"ok\":true,\"alive\":false,\"note\":\"agent did not respond\"}"; fi
-      '
-
-  - id: notify_smoke_result
-    command: >
-      bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-        if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Live smoke complete for $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+        if echo "$OUTPUT" | grep -q "payloads"; then
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive" --json 2>/dev/null || true
+          echo "{\"ok\":true,\"alive\":true}"
+        else
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=smoke error=agent_not_responding agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+          echo "{\"ok\":false,\"alive\":false}" >&2
+          exit 1
         fi
-        echo "{\"ok\":true}"
+      '
       '
 
   # ── DONE → notify + CTO final report ────────────────────────
