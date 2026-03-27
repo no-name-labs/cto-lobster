@@ -20,10 +20,6 @@ scripts/gateway-restart-callback.sh
 scripts/gateway-runtime-detect.sh
 scripts/lobster_register_agent.py
 scripts/build_monitor.sh
-skills/SKILL_INDEX.md
-skills/factory-create-agent/SKILL.md
-skills/factory-intake/SKILL.md
-skills/factory-memory-garden/SKILL.md
 scripts/ops/agent_bind.py
 scripts/ops/agent_list.py
 scripts/ops/config_validate.py
