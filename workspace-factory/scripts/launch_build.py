@@ -72,9 +72,9 @@ def write_progress(root: str, progress: dict):
         pass
 
 
-def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str):
-    """Replace unresolved variables in prompt files with absolute paths.
-    CTO often writes $OPENCLAW_ROOT or ~/.openclaw instead of real paths.
+def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str, agent_id: str = ""):
+    """Replace unresolved variables and fix wrong workspace paths in prompt files.
+    CTO often writes $OPENCLAW_ROOT, ~/.openclaw, or agents/<id> instead of workspace-<id>.
     """
     home = str(Path.home())
     pd = Path(prompts_dir)
@@ -87,6 +87,14 @@ def sanitize_prompt_paths(prompts_dir: str, root: str, workspace: str):
         ("$WORKSPACE", workspace),
         ("${WORKSPACE}", workspace),
     ]
+    # Fix wrong workspace paths: agents/<id> → workspace-<id>
+    if agent_id and workspace:
+        wrong_paths = [
+            f"{root}/agents/{agent_id}",
+            f"{root}/agents/{agent_id}/agent",
+        ]
+        for wrong in wrong_paths:
+            replacements.append((wrong, workspace))
     for f in pd.glob("*.txt"):
         content = f.read_text()
         original = content
@@ -302,7 +310,7 @@ def main():
 
     # Sanitize paths in prompt files (fix $OPENCLAW_ROOT, ~/.openclaw, etc.)
     if args.prompts_dir:
-        sanitize_prompt_paths(args.prompts_dir, root, workspace if workspace else "")
+        sanitize_prompt_paths(args.prompts_dir, root, workspace if workspace else "", args.agent_id or "")
 
     # Count prompt files
     prompt_count = 0

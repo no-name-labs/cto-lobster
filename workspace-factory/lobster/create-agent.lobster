@@ -247,42 +247,7 @@ steps:
         echo "{\"ok\":true}"
       '
 
-  # ── NOTIFY APPROVAL NEEDED ─────────────────────────────────────
-  - id: notify_approval_needed
-    command: >
-      bash -c '
-        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-        if [ -n "$CTO_TARGET" ]; then
-          WS="$LOBSTER_ARG_WORKSPACE"
-          PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
-          TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "? passed")
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔒 Approval needed: $LOBSTER_ARG_AGENT_ID | $PY py files | $TESTS | Reply YES to approve" --json 2>/dev/null || true
-        fi
-        echo "{\"ok\":true}"
-      '
-
-  # ── APPROVAL GATE ──────────────────────────────────────────────
-  - id: apply_gate
-    command: >
-      bash -c '
-        FILES=$(find "$LOBSTER_ARG_WORKSPACE" -type f 2>/dev/null | wc -l)
-        PY=$(find "$LOBSTER_ARG_WORKSPACE" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
-        echo "{\"agent_id\":\"$LOBSTER_ARG_AGENT_ID\",\"files\":$FILES,\"py_files\":$PY,\"ready\":true}"
-      '
-    approval: required
-
-  - id: notify_approved
-    command: >
-      bash -c '
-        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-        if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID is LIVE!" --json 2>/dev/null || true
-        fi
-        echo "{\"ok\":true,\"done\":true}"
-      '
-    condition: $apply_gate.approved
-
-  # ── BUILD_DONE → send to CTO Telegram topic (CTO writes final report) ──
+  # ── DONE → notify + CTO final report ────────────────────────
   - id: callback_cto
     command: >
       bash -c '
