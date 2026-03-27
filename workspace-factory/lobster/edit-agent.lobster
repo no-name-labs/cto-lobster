@@ -1,14 +1,9 @@
 name: edit-agent
-# Edit an existing agent. CTO writes FIX.txt (codex prompt with changes) to prompts_dir.
-# Codex implements changes, tests, fixes. Pipeline validates and applies.
+# Edit an existing agent. CTO writes FIX.txt to prompts_dir.
+# Code agent implements changes. Pipeline validates and applies.
 #
 # Args:
-#   agent_id      — e.g. "reddit-pain-finder"
-#   openclaw_root — absolute path to OPENCLAW_ROOT
-#   prompts_dir   — directory containing FIX.txt and optionally SMOKE.txt
-#   chat_id       — Telegram chat ID for notifications (optional)
-#   topic_id      — Telegram topic ID for notifications (optional)
-#   test_cmd      — test runner (default: python3 -m pytest -q)
+#   agent_id, openclaw_root, prompts_dir, chat_id, topic_id, test_cmd
 
 args:
   agent_id:
@@ -51,7 +46,7 @@ steps:
     command: >
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
+        if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔧 Editing $LOBSTER_ARG_AGENT_ID..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
@@ -60,7 +55,13 @@ steps:
   - id: codex_fix
     command: >
       bash -c '
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$LOBSTER_ARG_PROMPTS_DIR/FIX.txt" --timeout 3600 || true
+        TMPF=$(mktemp)
+        IDDIR="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/identities"
+        [ -f "$IDDIR/T03-developer.md" ] && cat "$IDDIR/T03-developer.md" >> "$TMPF" && echo "" >> "$TMPF"
+        echo "---" >> "$TMPF"
+        echo "## YOUR TASK (from CTO):" >> "$TMPF"
+        cat "$LOBSTER_ARG_PROMPTS_DIR/FIX.txt" >> "$TMPF"
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 3600 || true
         echo "{\"ok\":true}"
       '
 
@@ -68,7 +69,7 @@ steps:
     command: >
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
+        if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔧 Fix applied for $LOBSTER_ARG_AGENT_ID. Validating..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
@@ -80,7 +81,11 @@ steps:
         cd "$LOBSTER_ARG_OPENCLAW_ROOT"
         RESULT=$(openclaw config validate --json 2>&1 | tail -1)
         echo "$RESULT"
-        echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || exit 1
+        echo "$RESULT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get(\"valid\") else 1)" 2>/dev/null || {
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=validate_config error=config_invalid agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+          exit 1
+        }
       '
 
   - id: unit_tests
@@ -89,7 +94,10 @@ steps:
         WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
         if [ -d "$WS/tests" ]; then
           cd "$WS" && eval "$LOBSTER_ARG_TEST_CMD" 2>&1
-          if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2; exit 1; fi
+          if [ $? -ne 0 ]; then echo "{\"ok\":false,\"tests\":\"failed\"}" >&2
+            CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=unit_tests error=tests_failed agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+            exit 1; fi
           echo "{\"ok\":true,\"tests\":\"passed\"}"
         else
           echo "{\"ok\":true,\"tests\":\"skipped\"}"
@@ -100,13 +108,11 @@ steps:
     command: >
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
+        if [ -n "$CTO_TARGET" ]; then
           WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
           if [ -d "$WS/tests" ]; then
             COUNT=$(cd "$WS" && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "? passed")
             openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ Tests: $COUNT for $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
-          else
-            openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ No tests found for $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
           fi
         fi
         echo "{\"ok\":true}"
@@ -137,8 +143,8 @@ steps:
     command: >
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔄 Gateway restarted. Running smoke test..." --json 2>/dev/null || true
+        if [ -n "$CTO_TARGET" ]; then
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🔄 Gateway restarted. Running smoke..." --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
@@ -151,21 +157,16 @@ steps:
           echo "{\"skipped\":true,\"reason\":\"no SMOKE.txt\"}"
           exit 0
         fi
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 1800 || true
-        echo '{"ok":true}'
-      '
-
-  - id: notify_smoke
-    command: >
-      bash -c '
-        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke test done for $LOBSTER_ARG_AGENT_ID. Verifying requirements..." --json 2>/dev/null || true
-        fi
+        TMPF=$(mktemp)
+        IDDIR="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/identities"
+        [ -f "$IDDIR/T07-qa.md" ] && cat "$IDDIR/T07-qa.md" >> "$TMPF" && echo "" >> "$TMPF"
+        echo "---" >> "$TMPF"
+        echo "## YOUR TASK:" >> "$TMPF"
+        cat "$PFILE" >> "$TMPF"
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 1800 || true
         echo "{\"ok\":true}"
       '
 
-  # ── REQUIREMENTS VERIFICATION ──────────────────────────────────
   - id: verify_requirements
     command: >
       bash -c '
@@ -174,58 +175,17 @@ steps:
           echo "{\"skipped\":true,\"reason\":\"no VERIFY.txt\"}"
           exit 0
         fi
-        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$PFILE" --timeout 1800 || true
-        echo '{"ok":true}'
+        TMPF=$(mktemp)
+        IDDIR="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/identities"
+        [ -f "$IDDIR/T08-auditor.md" ] && cat "$IDDIR/T08-auditor.md" >> "$TMPF" && echo "" >> "$TMPF"
+        echo "---" >> "$TMPF"
+        echo "## YOUR TASK:" >> "$TMPF"
+        cat "$PFILE" >> "$TMPF"
+        python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 1800 --model claude-opus-4-6 || true
+        echo "{\"ok\":true}"
       '
 
-  - id: apply_gate
-    command: >
-      bash -c '
-        echo "{\"agent_id\":\"$LOBSTER_ARG_AGENT_ID\",\"action\":\"edit\",\"ready\":true}"
-      '
-    approval: required
-
-  - id: restart_gateway
-    command: >
-      bash -c '
-        if [ "$(uname)" = "Darwin" ]; then
-          launchctl bootout gui/$(id -u)/ai.openclaw.gateway 2>/dev/null || true
-          sleep 2
-          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || openclaw gateway install 2>/dev/null || true
-        else
-          openclaw gateway stop 2>&1 || true
-          sleep 2
-          openclaw gateway start 2>&1 || true
-        fi
-        sleep 6
-        for i in 1 2 3; do
-          STATUS=$(openclaw gateway status 2>&1 || true)
-          if echo "$STATUS" | grep -q "probe: ok"; then echo "{\"ok\":true}"; exit 0; fi
-          sleep 3
-        done
-        echo "{\"ok\":true,\"gateway_restart\":\"soft_fail\"}"
-      '
-    condition: $apply_gate.approved
-
-  - id: post_smoke
-    command: >
-      bash -c '
-        OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "Confirm you are alive. List your commands." --json 2>&1 || true)
-        if echo "$OUTPUT" | grep -q "payloads"; then echo "{\"ok\":true,\"alive\":true}"; else echo "{\"ok\":true,\"alive\":false,\"note\":\"agent did not respond but pipeline continues\"}"; fi
-      '
-    condition: $apply_gate.approved
-
-  - id: notify_done
-    command: >
-      bash -c '
-        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ $LOBSTER_ARG_AGENT_ID edited and verified." --json 2>/dev/null || true
-        fi
-        echo "{\"ok\":true,\"done\":true}"
-      '
-    condition: $apply_gate.approved
-
+  # ── DONE ────────────────────────────────────────────────────
   - id: callback_cto
     command: >
       bash -c '
@@ -238,15 +198,12 @@ steps:
           fi
           sleep 5
         fi
-        timeout 60 openclaw agent --agent cto-factory \
-          --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed chat_id=$LOBSTER_ARG_CHAT_ID topic_id=$LOBSTER_ARG_TOPIC_ID" \
-          --json 2>/dev/null || true
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-          if [ -n "$CTO_TARGET" ]; then
-          openclaw message send --channel telegram \
-            --target "$CTO_TARGET" \
-            -m "✅ <b>Edit complete: $LOBSTER_ARG_AGENT_ID</b>" \
-            --json 2>/dev/null || true
+        if [ -n "$CTO_TARGET" ]; then
+          WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
+          PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
+          TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 || echo "no tests")
+          openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID — EDIT COMPLETE | $PY py files | $TESTS" --json 2>/dev/null || true
         fi
         echo "{\"ok\":true}"
       '
