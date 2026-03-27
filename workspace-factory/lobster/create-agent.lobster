@@ -284,6 +284,8 @@ steps:
           echo "{\"ok\":true,\"alive\":true}"
         else
           [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: smoke | Agent not responding | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+          # Send direct command to CTO session so it proactively reports to user
+          timeout 60 openclaw agent --agent cto-factory --message "PIPELINE_FAILED agent_id=$LOBSTER_ARG_AGENT_ID step=smoke error=agent_not_responding. Go to the user in CTO Lobster topic and report this failure. Suggest checking agent workspace and gateway status." --json 2>/dev/null || true
           echo "{\"ok\":false,\"alive\":false}" >&2
           exit 1
         fi
@@ -312,6 +314,8 @@ steps:
           MSG="🎉 $LOBSTER_ARG_AGENT_ID — BUILD COMPLETE | ${ELAPSED_MIN}m | $PY py files | $TESTS | Telegram topic $LOBSTER_ARG_TOPIC_ID"
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
         fi
+        # Send direct command to CTO session so it proactively reports to user
+        timeout 60 openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS elapsed=${ELAPSED_MIN}m topic=$LOBSTER_ARG_TOPIC_ID. Go to the user in CTO Lobster topic and send a final build report with these results." --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '
 

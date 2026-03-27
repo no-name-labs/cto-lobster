@@ -48,7 +48,9 @@ def main():
     binding_created = False
     if chat_id:
         bindings = d.setdefault("bindings", [])
-        peer_id = f"{chat_id}:topic:{topic_id}" if topic_id else chat_id
+        # Strip "telegram:" prefix if CTO passed it (e.g. "telegram:-100363...")
+        clean_chat = chat_id.replace("telegram:", "") if chat_id.startswith("telegram:") else chat_id
+        peer_id = f"{clean_chat}:topic:{topic_id}" if topic_id else clean_chat
         # Check if binding already exists
         exists = any(
             b.get("agentId") == agent_id

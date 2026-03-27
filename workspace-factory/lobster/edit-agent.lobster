@@ -249,5 +249,7 @@ steps:
           TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 || echo "no tests")
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID — EDIT COMPLETE | $PY py files | $TESTS" --json 2>/dev/null || true
         fi
+        # Send direct command to CTO session so it proactively reports to user
+        timeout 60 openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed py_files=$PY tests=$TESTS. Go to the user in CTO Lobster topic and send the edit completion report." --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '

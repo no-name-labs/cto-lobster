@@ -258,9 +258,18 @@ def main():
     # CTO sees the error, writes the missing files, and retries.
     if args.action == "create" and args.prompts_dir:
         pd = Path(args.prompts_dir)
-        t_files = sorted(pd.glob("T*.txt"))
+        t_files = sorted(pd.glob("T[0-9][0-9].txt"))
+        # Also check for wrong naming (T1.txt instead of T01.txt) and give clear error
+        t_wrong = sorted(set(pd.glob("T*.txt")) - set(t_files))
+        if t_wrong and not t_files:
+            print(json.dumps({
+                "ok": False,
+                "error": f"BLOCKED: Prompt files use wrong naming. Use T01.txt-T08.txt (with leading zero), not {', '.join(f.name for f in t_wrong)}.",
+                "found": [f.name for f in t_wrong],
+            }))
+            return 1
         if not t_files:
-            print(json.dumps({"ok": False, "error": "BLOCKED: No T*.txt prompt files found. Write T01.txt through T08.txt."}))
+            print(json.dumps({"ok": False, "error": "BLOCKED: No T01-T08 prompt files found. Write T01.txt through T08.txt (leading zero required)."}))
             return 1
         if len(t_files) < 3:
             print(json.dumps({
@@ -269,6 +278,8 @@ def main():
                 "existing": [f.name for f in t_files],
             }))
             return 1
+        if t_wrong:
+            log(f"WARNING: Ignoring wrongly named files: {[f.name for f in t_wrong]}")
         log(f"Prompt gate passed: {len(t_files)} T-files")
 
     elif args.action == "edit" and args.prompts_dir:
@@ -345,6 +356,27 @@ def main():
     # ── SPAWN OR RUN ──────────────────────────────────────────
     log_dir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
     log_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── DEDUP GUARD ────────────────────────────────────────────
+    # Prevent double-launch: if a build is already running for this agent, block.
+    if args.agent_id and not is_background:
+        progress_file = log_dir / "build_progress.json"
+        if progress_file.exists():
+            try:
+                prev = json.loads(progress_file.read_text())
+                if prev.get("status") == "running" and prev.get("agent_id") == args.agent_id:
+                    # Check if the process is actually alive
+                    started = prev.get("started_at", "")
+                    print(json.dumps({
+                        "ok": False,
+                        "blocked": True,
+                        "reason": "build_already_running",
+                        "agent_id": args.agent_id,
+                        "started_at": started,
+                    }))
+                    return 1
+            except (json.JSONDecodeError, KeyError):
+                pass  # Malformed progress file, proceed
 
     if not is_background:
         # Parent process — spawn ourselves as detached subprocess and return immediately
