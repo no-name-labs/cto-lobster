@@ -321,19 +321,35 @@ print(d.get("oauthToken",""))
     echo "  └─────────────────────────────────────────────────────────┘"
     echo ""
     read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
-    # Read multiple lines (masked) until empty line, concatenate
-    local token_lines="" line=""
+    # Read with real-time masking (char by char)
+    # Two Enter presses (empty line) to finish — supports multi-line paste
+    local token_lines="" current_line="" char="" empty_enters=0
     printf "  Token> " >/dev/tty
-    while IFS= read -r -s line </dev/tty; do
-      if [ -z "$line" ]; then
+    while true; do
+      IFS= read -r -s -n1 char </dev/tty || break
+      if [ -z "$char" ]; then
+        # Enter pressed
         echo "" >/dev/tty
-        break
+        if [ -z "$current_line" ]; then
+          # Empty line = done
+          break
+        fi
+        token_lines="${token_lines}${current_line}"
+        current_line=""
+        printf "       > " >/dev/tty
+      elif [ "$char" = $'\x7f' ] || [ "$char" = $'\b' ]; then
+        # Backspace
+        if [ -n "$current_line" ]; then
+          current_line="${current_line%?}"
+          printf "\b \b" >/dev/tty
+        fi
+      else
+        current_line="${current_line}${char}"
+        printf "*" >/dev/tty
       fi
-      local masked="$(printf '%*s' ${#line} '' | tr ' ' '*')${line: -4}"
-      echo " $masked" >/dev/tty
-      token_lines="${token_lines}${line}"
-      printf "       > " >/dev/tty
     done
+    # Append any remaining line
+    token_lines="${token_lines}${current_line}"
     captured_token="$(echo "$token_lines" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
     if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
       echo "  ✓ Token captured (${#captured_token} chars, ends with ...${captured_token: -6})"
