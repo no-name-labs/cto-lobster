@@ -390,8 +390,16 @@ setup_telegram() {
   echo "╚═══════════════════════════════════════════════════════════════╝"
   echo ""
 
-  # 1. Bot token
-  prompt_secret TELEGRAM_BOT_TOKEN "Bot Token (from @BotFather)"
+  # 1. Bot token (validate format: numeric_id:alphanumeric)
+  while true; do
+    prompt_secret TELEGRAM_BOT_TOKEN "Bot Token (from @BotFather)"
+    if echo "$TELEGRAM_BOT_TOKEN" | grep -qE '^[0-9]+:[A-Za-z0-9_-]+$'; then
+      break
+    fi
+    error "Invalid bot token format. Must be like: 1234567890:ABCdefGHI..."
+    error "Create a bot via @BotFather in Telegram and copy the token."
+    TELEGRAM_BOT_TOKEN=""
+  done
   upsert_env "$OPENCLAW_HOME/.env" "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
 
   # 2. Enable Telegram plugin
