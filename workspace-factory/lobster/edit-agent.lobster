@@ -140,9 +140,15 @@ steps:
   - id: restart_for_smoke
     command: >
       bash -c '
-        openclaw gateway stop 2>&1 || true
-        sleep 3
-        openclaw gateway start 2>&1 || true
+        if [ "$(uname)" = "Darwin" ]; then
+          launchctl bootout gui/$(id -u)/ai.openclaw.gateway 2>/dev/null || true
+          sleep 3
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
+        else
+          openclaw gateway stop 2>&1 || true
+          sleep 3
+          openclaw gateway start 2>&1 || true
+        fi
         sleep 8
         for i in 1 2 3 4 5 6; do
           STATUS=$(openclaw gateway status 2>&1 || true)
@@ -245,6 +251,6 @@ steps:
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID — EDIT COMPLETE | $PY py files | $TESTS" --json 2>/dev/null || true
         fi
         # Send direct command to CTO session so it proactively reports to user
-        timeout 60 openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed py_files=$PY tests=$TESTS. Go to the user in CTO Lobster topic and send the edit completion report." --json 2>/dev/null || true
+        openclaw agent --agent cto-factory --timeout 90 --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed py_files=$PY tests=$TESTS. Go to the user in CTO Lobster topic and send the edit completion report." --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '

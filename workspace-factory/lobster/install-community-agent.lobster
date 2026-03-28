@@ -104,9 +104,15 @@ steps:
   - id: restart_gateway
     command: >
       bash -c '
-        openclaw gateway stop 2>&1 || true
-        sleep 3
-        openclaw gateway start 2>&1 || true
+        if [ "$(uname)" = "Darwin" ]; then
+          launchctl bootout gui/$(id -u)/ai.openclaw.gateway 2>/dev/null || true
+          sleep 3
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
+        else
+          openclaw gateway stop 2>&1 || true
+          sleep 3
+          openclaw gateway start 2>&1 || true
+        fi
         sleep 8
         for i in 1 2 3 4 5 6; do
           STATUS=$(openclaw gateway status 2>&1 || true)
@@ -138,7 +144,7 @@ steps:
       bash -c '
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
         for ATTEMPT in 1 2 3 4; do
-          OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "hello" --json 2>&1 || true)
+          OUTPUT=$(openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "hello" --json --timeout 60 2>&1 || true)
           if echo "$OUTPUT" | grep -q "payloads"; then
             [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive (attempt $ATTEMPT)" --json 2>/dev/null || true
             echo "{\"ok\":true,\"alive\":true}"
@@ -198,7 +204,7 @@ steps:
           fi
           sleep 5
         fi
-        timeout 60 openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=install status=completed chat_id=$LOBSTER_ARG_CHAT_ID topic_id=$LOBSTER_ARG_TOPIC_ID" --json 2>/dev/null || true
+        openclaw agent --agent cto-factory --timeout 90 --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=install status=completed chat_id=$LOBSTER_ARG_CHAT_ID topic_id=$LOBSTER_ARG_TOPIC_ID" --json 2>/dev/null || true
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           if [ -n "$CTO_TARGET" ]; then
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID installed from $LOBSTER_ARG_REPO_URL" --json 2>/dev/null || true

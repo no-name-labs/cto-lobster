@@ -237,9 +237,15 @@ steps:
     command: >
       bash -c '
         # Always restart — gateway needs to reload config to see newly registered agent
-        openclaw gateway stop 2>&1 || true
-        sleep 3
-        openclaw gateway start 2>&1 || true
+        if [ "$(uname)" = "Darwin" ]; then
+          launchctl bootout gui/$(id -u)/ai.openclaw.gateway 2>/dev/null || true
+          sleep 3
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
+        else
+          openclaw gateway stop 2>&1 || true
+          sleep 3
+          openclaw gateway start 2>&1 || true
+        fi
         sleep 8
         for i in 1 2 3 4 5 6; do
           STATUS=$(openclaw gateway status 2>&1 || true)
@@ -279,7 +285,7 @@ steps:
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
         # Retry smoke up to 4 times with 45s pause — agent needs ~2 min to init after gateway restart
         for ATTEMPT in 1 2 3 4; do
-          OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "Confirm you are alive. List your commands." --json 2>&1 || true)
+          OUTPUT=$(openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "Confirm you are alive. List your commands." --json --timeout 60 2>&1 || true)
           if echo "$OUTPUT" | grep -q "payloads"; then
             [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive (attempt $ATTEMPT)" --json 2>/dev/null || true
             echo "{\"ok\":true,\"alive\":true}"
@@ -299,7 +305,7 @@ steps:
           sleep 5
         done
         # Send direct command to CTO so it proactively reports to user
-        timeout 90 openclaw agent --agent cto-factory --message "PIPELINE_FAILED agent_id=$LOBSTER_ARG_AGENT_ID step=smoke error=agent_not_responding_after_3_attempts. Report this failure to the user in CTO Lobster topic. Suggest checking workspace and gateway." --json 2>/dev/null || true
+        openclaw agent --agent cto-factory --timeout 90 --message "PIPELINE_FAILED agent_id=$LOBSTER_ARG_AGENT_ID step=smoke error=agent_not_responding_after_4_attempts. Report this failure to the user in CTO Lobster topic. Suggest checking workspace and gateway." --json 2>/dev/null || true
         echo "{\"ok\":false,\"alive\":false}" >&2
         exit 1
       '
@@ -328,7 +334,7 @@ steps:
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
         fi
         # Send direct command to CTO session so it proactively reports to user
-        timeout 60 openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS elapsed=${ELAPSED_MIN}m topic=$LOBSTER_ARG_TOPIC_ID. Go to the user in CTO Lobster topic and send a final build report with these results." --json 2>/dev/null || true
+        openclaw agent --agent cto-factory --timeout 90 --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS elapsed=${ELAPSED_MIN}m topic=$LOBSTER_ARG_TOPIC_ID. Go to the user in CTO Lobster topic and send a final build report with these results." --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '
 
