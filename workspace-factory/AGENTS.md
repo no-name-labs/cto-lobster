@@ -72,6 +72,14 @@ If cron is not created after build, check:
 **Lobster-internal (CTO does not drive):**
 `PREFLIGHT → T01-T08 (with identity injection) → VALIDATE → TEST → REGISTER → RESTART → SMOKE (4 retries) → CALLBACK_CTO`
 
+
+## Progress Tracking
+
+**Real-time progress**: Telegram notifications in CTO topic (⏳/✅ per step)
+**Post-mortem**: .cto-brain/runtime/build_progress.json (status: running/completed/failed)
+
+Note: build_progress.json shows high-level status only (not individual T-steps).
+The Telegram topic is the authoritative real-time source during active builds.
 ## Runtime State
 
 | File | Purpose |

@@ -602,8 +602,8 @@ def main():
         progress["elapsed_seconds"] = elapsed
         progress["workspace_stats"] = ws_info
         write_progress(root, progress)
-        # Lobster callback_cto already notified topic — send CTO session callback
-        notify(notify_chat, notify_topic, f"✅ Pipeline completed: {args.agent_id or "unknown"} ({elapsed}s)")
+        # Lobster callback_cto already sends BUILD_COMPLETE + CTO --deliver report
+        # No duplicate notify here
         print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}))
         return 0
 
@@ -631,7 +631,7 @@ def main():
             progress["elapsed_seconds"] = elapsed
             progress["workspace_stats"] = ws_info
             write_progress(root, progress)
-            notify(notify_chat, notify_topic, f"✅ Pipeline completed: {args.agent_id or "unknown"} ({elapsed}s)")
+            # Lobster callback_cto already sends BUILD_COMPLETE + CTO --deliver report
             print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}, indent=2))
     else:
         error = result.get("error", {}).get("message", "unknown")

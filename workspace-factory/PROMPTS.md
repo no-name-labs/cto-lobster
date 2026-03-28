@@ -195,11 +195,18 @@ Requirements to verify:
 
 **If cron is required, T08 MUST include the EXACT cron create command:**
 ```
-Register cron with delivery:
+Register cron with delivery to TOPIC (not group):
 openclaw cron create --agent <agent_id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --announce --channel telegram --to "<chat_id>:topic:<topic_id>" --best-effort-deliver
 ```
+
+**CRITICAL: The `--to` value MUST include `:topic:<id>` suffix!**
+- CORRECT: `--to "-1003633569118:topic:1654"` (delivers to topic 1654)
+- WRONG: `--to "-1003633569118"` (delivers to group general chat, not to the topic!)
+
+Copy the EXACT `--to` value from the agent binding in openclaw.json. It already has the `:topic:` format.
+
 Do NOT use `--schedule` (wrong flag). Do NOT omit `--announce --channel telegram --to` (output goes nowhere).
-The T08 identity file already has this knowledge — but you must include the requirement in the prompt.
+The T08 identity file already has this knowledge — but you must include the full `--to` with topic suffix in the prompt.
 
 **MANDATORY: Write at least 3 T-files. Gate blocks if fewer.**
 
@@ -278,6 +285,8 @@ CHANGE REQUESTED:
 
 MANDATORY:
 - Read existing code before modifying
+- Update ALL workspace docs to match the change (PROMPTS.md, AGENTS.md, IDENTITY.md, TOOLS.md)
+  If PROMPTS.md says one thing and AGENTS.md says another, the agent's LLM will be confused
 - Run tests after changes: python3 -m pytest <workspace>/tests/ -v
 - Fix until all pass
 - Exit 0 on success

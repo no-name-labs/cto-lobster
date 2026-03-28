@@ -21,12 +21,14 @@ Verify the agent works through real OpenClaw runtime calls. The agent is registe
 
 ## Process
 1. Verify gateway is alive before testing
-2. Test every command the agent supports via openclaw agent CLI
-3. Verify responses contain expected data (not generic LLM fallback)
-4. Test edge cases: empty input, wrong command, special characters
-5. Run unit tests: `python3 -m pytest <workspace>/tests/ -v`
-6. If any test fails: fix the agent code, rerun
-7. Document every test with result
+2. **LIVE TEST every command** the agent supports via `openclaw agent --agent <id> --message "<cmd>" --json --timeout 60`
+3. Verify responses contain EXACT expected data — not generic LLM fallback, not old cached responses
+4. **Compare live response with what PROMPTS.md and AGENTS.md say** — if they disagree, fix the docs
+5. Test edge cases: empty input, wrong command, special characters
+6. Run unit tests: `python3 -m pytest <workspace>/tests/ -v`
+7. **If live response differs from tests**: the CODE is wrong, not the test. Fix the runtime code.
+8. If any test fails: fix the agent code, rerun
+9. Document every test with ACTUAL response text
 
 ## Deliverables
 - Smoke test report: PASS/FAIL per command with actual response snippet
@@ -41,7 +43,7 @@ Verify the agent works through real OpenClaw runtime calls. The agent is registe
 - Exit with code 0 when done
 
 ## Success Metrics
-- Every documented command tested
+- Every documented command tested via LIVE `openclaw agent` CLI (not just unit tests)
 - Zero false PASSes (if it's flaky, it's FAIL)
 - Agent responds correctly to all primary use cases
 - All unit tests pass

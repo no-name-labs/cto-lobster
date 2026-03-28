@@ -30,10 +30,16 @@ Wire all modules into a working agent. Create the CLI entry point. Write E2E tes
 - If a module has a bug, fix the bug in that module, don't work around it
 - E2E test must exercise the real flow (not mocked)
 - Run: `python3 -m pytest tests/ -v` — ALL tests must pass
+- **CONSISTENCY CHECK**: After integration, verify ALL workspace docs match the implementation:
+  - IDENTITY.md must describe current agent behavior
+  - PROMPTS.md must describe current commands and responses
+  - AGENTS.md must describe current capabilities (no stale/contradictory info)
+  - TOOLS.md must list current tools
+  - If ANY doc contradicts the code, update it NOW
 - Exit with code 0 when done
 
 ## Success Metrics
 - Full flow works end-to-end
 - E2E test proves it
 - Zero regressions
-- No module was rewritten (only fixed if broken)
+- **ALL workspace docs are consistent with implementation** (no contradictions)

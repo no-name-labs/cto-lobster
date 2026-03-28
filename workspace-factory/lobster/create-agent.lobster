@@ -111,7 +111,7 @@ steps:
           esac
           # ── Run code agent ──
           SNAPSHOT_BEFORE=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
-          python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_WORKSPACE" --prompt-file "$EXEC_FILE" --timeout 900 $MODEL_FLAG || true
+          python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$EXEC_FILE" --timeout 900 $MODEL_FLAG || true
           # ── Verify code agent actually did something ──
           SNAPSHOT_AFTER=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
           if [ "$STEP_NUM" -gt 1 ] && [ "$SNAPSHOT_AFTER" -eq "$SNAPSHOT_BEFORE" ] && [ "$SNAPSHOT_AFTER" -eq 0 ]; then
