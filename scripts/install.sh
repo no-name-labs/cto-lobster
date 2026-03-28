@@ -313,12 +313,25 @@ print(d.get("oauthToken",""))
     attempt=$((attempt + 1))
     [ "$attempt" -gt 3 ] && break
     echo ""
-    echo "  Token not detected. Paste the setup-token value (starts with sk-ant-oat...)."
-    echo "  If you need a new one, run 'claude setup-token' in another terminal."
+    echo "  Token not detected automatically."
+    echo ""
+    echo "  IMPORTANT: The token shown above may be split across 2 lines."
+    echo "  Copy THE ENTIRE token (both lines) and paste it below."
+    echo "  Example: sk-ant-oat01-xxxxx...xxxxx-v0SEHAAA"
+    echo ""
+    echo "  Paste your token, then press Enter twice (empty line to finish):"
     echo ""
     read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
-    read -r -p "  Token: " captured_token </dev/tty
-    captured_token="$(echo "$captured_token" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
+    # Read multiple lines until empty line, concatenate
+    local token_lines="" line=""
+    while IFS= read -r line </dev/tty; do
+      [ -z "$line" ] && break
+      token_lines="${token_lines}${line}"
+    done
+    captured_token="$(echo "$token_lines" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
+    if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
+      echo "  Token captured: ${captured_token:0:20}...${captured_token: -8}"
+    fi
   done
 
   # Save token and verify
