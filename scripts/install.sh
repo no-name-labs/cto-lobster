@@ -313,24 +313,25 @@ print(d.get("oauthToken",""))
     attempt=$((attempt + 1))
     [ "$attempt" -gt 3 ] && break
     echo ""
-    echo "  Token not detected automatically."
-    echo ""
-    echo "  IMPORTANT: The token shown above may be split across 2 lines."
-    echo "  Copy THE ENTIRE token (both lines) and paste it below."
-    echo "  Example: sk-ant-oat01-xxxxx...xxxxx-v0SEHAAA"
-    echo ""
-    echo "  Paste your token, then press Enter twice (empty line to finish):"
+    echo "  ┌─────────────────────────────────────────────────────────┐"
+    echo "  │  Copy the FULL token from above (it may wrap 2 lines)  │"
+    echo "  │  Paste it below, then press Enter TWICE to confirm.    │"
+    echo "  │                                                         │"
+    echo "  │  Token starts with: sk-ant-oat01-...                   │"
+    echo "  └─────────────────────────────────────────────────────────┘"
     echo ""
     read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
     # Read multiple lines until empty line, concatenate
     local token_lines="" line=""
+    printf "  Token> " >/dev/tty
     while IFS= read -r line </dev/tty; do
       [ -z "$line" ] && break
       token_lines="${token_lines}${line}"
+      printf "       > " >/dev/tty
     done
     captured_token="$(echo "$token_lines" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
     if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-      echo "  Token captured: ${captured_token:0:20}...${captured_token: -8}"
+      echo "  ✓ Token captured (${#captured_token} chars)"
     fi
   done
 
@@ -717,22 +718,29 @@ main() {
   local display_gw_token
   display_gw_token="$(grep 'OPENCLAW_GATEWAY_TOKEN=' "$OPENCLAW_HOME/.env" 2>/dev/null | head -1 | cut -d= -f2- || echo 'not set')"
 
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║                                                              ║"
-  echo "║  🎉 CTO Factory installed!                                  ║"
-  echo "║                                                              ║"
-  echo "║  Test via CLI:                                               ║"
-  echo "║    openclaw agent --agent cto-factory --message 'hello'      ║"
-  echo "║                                                              ║"
-  echo "║  Or talk to CTO in your Telegram topic.                      ║"
-  echo "║                                                              ║"
-  printf "║  Gateway token: %-43s║\n" "$display_gw_token"
-  echo "║  (save it — needed for dashboard access)                     ║"
-  echo "║                                                              ║"
-  printf "║  Config: %-51s║\n" "$OPENCLAW_HOME/openclaw.json"
-  printf "║  Logs:   %-51s║\n" "$OPENCLAW_HOME/logs/gateway-run.log"
-  echo "║                                                              ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
+  local W=72
+  local border_top border_bot empty_line
+  border_top="╔$(printf '═%.0s' $(seq 1 $W))╗"
+  border_bot="╚$(printf '═%.0s' $(seq 1 $W))╝"
+  empty_line="║$(printf ' %.0s' $(seq 1 $W))║"
+  pad() { printf "║  %-${W}s" "$1" | head -c $((W+3)); printf "║\n"; }
+
+  echo "$border_top"
+  echo "$empty_line"
+  pad "🎉 CTO Factory installed!"
+  echo "$empty_line"
+  pad "Test via CLI:"
+  pad "  openclaw agent --agent cto-factory --message 'hello'"
+  echo "$empty_line"
+  pad "Or talk to CTO in your Telegram topic."
+  echo "$empty_line"
+  pad "Gateway token (save it!):"
+  pad "  $display_gw_token"
+  echo "$empty_line"
+  pad "Config: $OPENCLAW_HOME/openclaw.json"
+  pad "Logs:   $OPENCLAW_HOME/logs/gateway-run.log"
+  echo "$empty_line"
+  echo "$border_bot"
   echo ""
 }
 
