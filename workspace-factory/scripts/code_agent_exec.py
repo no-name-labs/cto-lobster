@@ -116,12 +116,12 @@ def build_cmd(args: argparse.Namespace) -> list[str]:
     if agent_type == "claude":
         cmd = [
             "claude",
-            "--print",
+            "-p",  # prompt mode — agent with tool use (creates files, runs commands)
             "--output-format", "text",
             "--dangerously-skip-permissions",
             "--model", args.model,
         ]
-        # claude --print reads prompt from stdin
+        # claude -p reads prompt from stdin, executes tools, writes files
         return cmd
     else:
         # codex
