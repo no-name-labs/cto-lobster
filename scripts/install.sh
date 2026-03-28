@@ -323,15 +323,25 @@ setup_anthropic_auth() {
     captured_token="$(echo "$captured_token" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
   done
 
-  # Save token to auth-profiles.json
+  # Save token everywhere OpenClaw might look
   if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-    info "Saving Anthropic token to auth-profiles..."
+    info "Saving Anthropic token..."
+    # 1. auth-profiles.json (agent-level auth store)
     save_auth_token "$captured_token"
-    info "Anthropic auth configured."
+    # 2. CLAUDE_CODE_OAUTH_TOKEN in .env (Claude Code CLI picks this up)
+    upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
+    # 3. Verify it works
+    local probe
+    probe="$(CLAUDE_CODE_OAUTH_TOKEN="$captured_token" claude -p "Reply exactly: AUTH_OK" --output-format text --permission-mode default 2>&1 || true)"
+    if echo "$probe" | grep -q "AUTH_OK"; then
+      info "Anthropic auth verified — Claude responds."
+    else
+      warn "Token saved but Claude probe failed. It may still work through OpenClaw."
+    fi
   else
-    warn "No valid token. Agent won't work until you run 'claude setup-token' and save the token."
-    warn "After getting the token, run:"
-    warn "  openclaw auth add --provider anthropic --token <your-token>"
+    warn "No valid token. Agent won't work until you configure auth."
+    warn "Run: claude setup-token"
+    warn "Then: echo 'CLAUDE_CODE_OAUTH_TOKEN=<your-token>' >> $OPENCLAW_HOME/.env"
   fi
 }
 
@@ -357,9 +367,25 @@ p = pathlib.Path(sys.argv[1]); port = int(sys.argv[2]); token = sys.argv[3]
 d = json.loads(p.read_text()) if p.exists() else {}
 d.setdefault("gateway", {}).update({"port": port, "mode": "local", "bind": "loopback"})
 d["gateway"].setdefault("auth", {"mode": "token", "token": token})
-d.setdefault("auth", {}).setdefault("profiles", {}).setdefault("anthropic:claude-cli", {"provider": "anthropic", "mode": "token"})
-d.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {"primary": "anthropic/claude-sonnet-4-6"})
-d["agents"].setdefault("list", [])
+auth = d.setdefault("auth", {})
+profiles = auth.setdefault("profiles", {})
+profiles.setdefault("anthropic:oauth", {"provider": "anthropic", "mode": "token"})
+order = auth.setdefault("order", {})
+prov_order = order.setdefault("anthropic", [])
+if "anthropic:oauth" not in prov_order: prov_order.append("anthropic:oauth")
+agents = d.setdefault("agents", {})
+defaults = agents.setdefault("defaults", {})
+defaults.setdefault("model", {"primary": "anthropic/claude-sonnet-4-6"})
+defaults.setdefault("timeoutSeconds", 3600)
+agent_list = agents.setdefault("list", [])
+# Ensure main agent exists (OpenClaw requires it)
+if not any(a.get("id") == "main" for a in agent_list):
+    import os
+    agent_list.append({
+        "id": "main", "default": True, "name": "Main Agent",
+        "workspace": os.path.expanduser("~/.openclaw/workspace"),
+        "agentDir": os.path.expanduser("~/.openclaw/agents/main/agent"),
+    })
 d.setdefault("bindings", [])
 d.setdefault("plugins", {}).setdefault("allow", [])
 p.write_text(json.dumps(d, indent=2) + "\n")
