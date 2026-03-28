@@ -195,40 +195,29 @@ setup_anthropic_auth() {
   echo "║                                                              ║"
   echo "║  You need an Anthropic account with Claude Opus access.     ║"
   echo "║                                                              ║"
-  echo "║  What will happen:                                          ║"
-  echo "║  1. We run 'claude auth login' — it prints an OAuth URL     ║"
-  echo "║  2. Copy that URL and open it in YOUR browser (laptop/PC)   ║"
-  echo "║  3. Sign in to Anthropic, authorize Claude Code             ║"
-  echo "║  4. The CLI will detect the login automatically             ║"
+  echo "║  The installer cannot run 'claude auth login' in pipe mode. ║"
+  echo "║  Please do it manually RIGHT NOW in this terminal:          ║"
   echo "║                                                              ║"
-  echo "║  If it hangs after you authorized — press Ctrl+C and       ║"
-  echo "║  the installer will continue. Auth is usually saved.        ║"
+  echo "║    1. The installer will pause                               ║"
+  echo "║    2. Run:  claude auth login                                ║"
+  echo "║    3. Copy the URL it shows → open in your browser          ║"
+  echo "║    4. Sign in → Anthropic shows a code                      ║"
+  echo "║    5. Paste the code back into the terminal                  ║"
+  echo "║    6. Press Enter here to continue the installer             ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo ""
-  wait_for_user "Press Enter to start 'claude auth login'... "
-
-  # Run interactively with /dev/tty
-  claude auth login </dev/tty >/dev/tty 2>&1 || true
-
+  echo "  >>> Run this command now (paste into this terminal):"
   echo ""
+  echo "      claude auth login"
+  echo ""
+  wait_for_user "Press Enter AFTER you complete 'claude auth login'... "
+
   # Verify
   if claude auth status >/dev/null 2>&1; then
     info "Anthropic OAuth verified."
   else
-    echo ""
-    echo "  Auth not detected yet. Two options:"
-    echo ""
-    echo "  a) Open another terminal, run:  claude auth login"
-    echo "     Complete the login there, then come back here."
-    echo ""
-    echo "  b) Continue without auth — CTO will try Sonnet fallback."
-    echo ""
-    wait_for_user "Press Enter when ready to continue... "
-    if claude auth status >/dev/null 2>&1; then
-      info "Anthropic OAuth verified."
-    else
-      warn "Continuing without auth. Run 'claude auth login' later to enable Opus."
-    fi
+    warn "Auth not detected. You can retry: claude auth login"
+    wait_for_user "Press Enter to continue anyway (CTO will use Sonnet fallback)... "
   fi
 }
 
