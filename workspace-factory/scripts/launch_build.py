@@ -357,26 +357,30 @@ def main():
     log_dir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── DEDUP GUARD ────────────────────────────────────────────
-    # Prevent double-launch: if a build is already running for this agent, block.
+    # ── DEDUP GUARD (atomic lockfile) ────────────────────────────
+    # Prevent double-launch using OS-level exclusive file lock.
+    # Progress-file check was too slow — CTO can call twice before first write.
+    lock_file = log_dir / "build.lock"
     if args.agent_id and not is_background:
-        progress_file = log_dir / "build_progress.json"
-        if progress_file.exists():
+        try:
+            import fcntl
+            lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_WRONLY)
             try:
-                prev = json.loads(progress_file.read_text())
-                if prev.get("status") == "running" and prev.get("agent_id") == args.agent_id:
-                    # Check if the process is actually alive
-                    started = prev.get("started_at", "")
-                    print(json.dumps({
-                        "ok": False,
-                        "blocked": True,
-                        "reason": "build_already_running",
-                        "agent_id": args.agent_id,
-                        "started_at": started,
-                    }))
-                    return 1
-            except (json.JSONDecodeError, KeyError):
-                pass  # Malformed progress file, proceed
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError):
+                os.close(lock_fd)
+                print(json.dumps({
+                    "ok": False,
+                    "blocked": True,
+                    "reason": "build_already_running",
+                    "agent_id": args.agent_id,
+                }))
+                return 1
+            # Write agent_id + timestamp to lock file
+            os.write(lock_fd, f"{args.agent_id} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}".encode())
+            os.close(lock_fd)
+        except ImportError:
+            pass  # No fcntl on Windows — skip guard
 
     if not is_background:
         # Parent process — spawn ourselves as detached subprocess and return immediately
@@ -417,6 +421,17 @@ def main():
         return 0
 
     # ── BACKGROUND MODE — run pipeline directly ──────────────
+
+    # Acquire lock for the duration of the pipeline
+    _lock_fd = None
+    try:
+        import fcntl
+        _lock_fd = os.open(str(lock_file), os.O_CREAT | os.O_WRONLY)
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(_lock_fd, f"{args.agent_id} {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}".encode())
+        # Keep fd open — lock held until process exits
+    except (ImportError, BlockingIOError, OSError):
+        pass
 
     # Clear stale failure_notified flag from previous runs
     flag_file = log_dir / "failure_notified"

@@ -141,16 +141,22 @@ steps:
   - id: smoke_test
     command: >
       bash -c '
-        OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "hello" --json 2>&1 || true)
         CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
-        if echo "$OUTPUT" | grep -q "payloads"; then
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive" --json 2>/dev/null || true
-          echo "{\"ok\":true,\"alive\":true}"
-        else
-          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "PIPELINE_FAILED step=smoke error=agent_not_responding agent_id=$LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
-          echo "{\"ok\":false,\"alive\":false}" >&2
-          exit 1
-        fi
+        for ATTEMPT in 1 2 3; do
+          OUTPUT=$(timeout 60 openclaw agent --agent "$LOBSTER_ARG_AGENT_ID" --message "hello" --json 2>&1 || true)
+          if echo "$OUTPUT" | grep -q "payloads"; then
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "🧪 Smoke PASS — $LOBSTER_ARG_AGENT_ID is alive (attempt $ATTEMPT)" --json 2>/dev/null || true
+            echo "{\"ok\":true,\"alive\":true}"
+            exit 0
+          fi
+          if [ "$ATTEMPT" -lt 3 ]; then
+            [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⏳ Smoke attempt $ATTEMPT failed, retrying in 15s..." --json 2>/dev/null || true
+            sleep 15
+          fi
+        done
+        [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: smoke | Agent not responding after 3 attempts | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true
+        echo "{\"ok\":false,\"alive\":false}" >&2
+        exit 1
       '
 
   # ── VERIFY (optional, code agent runs post-install checks) ─
