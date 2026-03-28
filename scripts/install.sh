@@ -352,7 +352,7 @@ import json, pathlib, sys
 p = pathlib.Path(sys.argv[1]); port = int(sys.argv[2]); token = sys.argv[3]
 d = json.loads(p.read_text()) if p.exists() else {}
 d.setdefault("gateway", {}).update({"port": port, "mode": "local", "bind": "loopback"})
-d["gateway"].setdefault("auth", {"mode": "token", "token": "${OPENCLAW_GATEWAY_TOKEN}"})
+d["gateway"].setdefault("auth", {"mode": "token", "token": token})
 d.setdefault("auth", {}).setdefault("profiles", {}).setdefault("anthropic:claude-cli", {"provider": "anthropic", "mode": "token"})
 d.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {"primary": "anthropic/claude-sonnet-4-6"})
 d["agents"].setdefault("list", [])
@@ -410,7 +410,7 @@ d = json.loads(p.read_text())
 tg = d.setdefault("channels", {}).setdefault("telegram", {})
 tg["enabled"] = True
 tg.setdefault("commands", {})["native"] = True
-tg.setdefault("accounts", {}).setdefault("default", {})["botToken"] = "${TELEGRAM_BOT_TOKEN}"
+tg.setdefault("accounts", {}).setdefault("default", {})["botToken"] = t
 plugins = d.setdefault("plugins", {})
 allow = plugins.setdefault("allow", [])
 if "telegram" not in allow: allow.append("telegram")
