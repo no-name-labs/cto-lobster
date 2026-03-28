@@ -175,6 +175,50 @@ install_tools() {
 
 # ── Stage 3: Anthropic OAuth ────────────────────────────────
 
+extract_oauth_token_from_log() {
+  local log_path="$1"
+  [ -f "$log_path" ] || return 1
+  local cleaned
+  cleaned="$(tr -d '\r' <"$log_path" | sed -E 's/\x1B\[[0-9;?]*[A-Za-z]//g')"
+  # Extract sk-ant-oat token (may wrap across lines)
+  local token
+  token="$(printf "%s\n" "$cleaned" | awk '
+    BEGIN { collect=0; tok="" }
+    {
+      line=$0
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+      if (collect == 1) {
+        if (line ~ /^[A-Za-z0-9._-]+$/) { tok = tok line; next }
+        collect = 0
+      }
+      if (line ~ /^sk-ant-oat[A-Za-z0-9._-]*$/) { tok = line; collect = 1; next }
+    }
+    END { if (tok != "") print tok }
+  ' | tail -n1 || true)"
+  [ -n "$token" ] && printf "%s" "$token" && return 0
+  return 1
+}
+
+apply_oauth_token() {
+  local token="$1"
+  local auth_store="$OPENCLAW_HOME/workspace-factory/auth-profiles.json"
+  python3 - "$auth_store" "$token" << 'PYEOF'
+import json, pathlib, sys, time
+store_path = pathlib.Path(sys.argv[1])
+token = sys.argv[2].strip()
+store_path.parent.mkdir(parents=True, exist_ok=True)
+data = json.loads(store_path.read_text()) if store_path.exists() else {}
+if not isinstance(data, dict): data = {}
+data["version"] = 1
+profiles = data.setdefault("profiles", {})
+profiles["anthropic:oauth"] = {
+    "type": "token", "provider": "anthropic", "token": token,
+    "expires": int(time.time() * 1000) + 365 * 24 * 60 * 60 * 1000,
+}
+store_path.write_text(json.dumps(data, indent=2) + "\n")
+PYEOF
+}
+
 setup_anthropic_auth() {
   info "Setting up Anthropic authentication..."
 
@@ -185,39 +229,49 @@ setup_anthropic_auth() {
   fi
 
   if [ "$NON_INTERACTIVE" = "true" ]; then
-    warn "Non-interactive mode: skipping OAuth login. Run 'claude auth login' manually."
+    warn "Non-interactive mode: skipping OAuth. Run 'claude setup-token' manually."
     return 0
   fi
 
   echo ""
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║  Anthropic OAuth Login                                      ║"
-  echo "║                                                              ║"
-  echo "║  You need an Anthropic account with Claude Opus access.     ║"
-  echo "║                                                              ║"
-  echo "║  The installer cannot run 'claude auth login' in pipe mode. ║"
-  echo "║  Please do it manually RIGHT NOW in this terminal:          ║"
-  echo "║                                                              ║"
-  echo "║    1. The installer will pause                               ║"
-  echo "║    2. Run:  claude auth login                                ║"
-  echo "║    3. Copy the URL it shows → open in your browser          ║"
-  echo "║    4. Sign in → Anthropic shows a code                      ║"
-  echo "║    5. Paste the code back into the terminal                  ║"
-  echo "║    6. Press Enter here to continue the installer             ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo "╔═══════════════════════════════════════════════════════════════╗"
+  echo "║  Anthropic Authentication                                    ║"
+  echo "║                                                               ║"
+  echo "║  You need an Anthropic account with a Claude subscription.   ║"
+  echo "║                                                               ║"
+  echo "║  What will happen:                                           ║"
+  echo "║  1. Claude CLI shows a URL                                   ║"
+  echo "║  2. Open it in your browser (on any device)                  ║"
+  echo "║  3. Sign in to Anthropic                                     ║"
+  echo "║  4. Copy the token it gives you (starts with sk-ant-oat...) ║"
+  echo "║  5. Paste the token back here                                ║"
+  echo "╚═══════════════════════════════════════════════════════════════╝"
   echo ""
-  echo "  >>> Run this command now (paste into this terminal):"
-  echo ""
-  echo "      claude auth login"
-  echo ""
-  wait_for_user "Press Enter AFTER you complete 'claude auth login'... "
+
+  local setup_log
+  setup_log="$(mktemp)"
+  local captured_token=""
+
+  if command -v script >/dev/null 2>&1; then
+    # Use 'script' to capture output while keeping terminal interactive
+    script -q -e -c "claude setup-token" "$setup_log" </dev/tty >/dev/tty 2>&1 || true
+    captured_token="$(extract_oauth_token_from_log "$setup_log" || true)"
+  else
+    claude setup-token </dev/tty >/dev/tty 2>&1 || true
+  fi
+  rm -f "$setup_log"
+
+  # If we captured the token, apply it to auth-profiles
+  if [ -n "$captured_token" ]; then
+    info "Token captured, saving to auth-profiles..."
+    apply_oauth_token "$captured_token"
+  fi
 
   # Verify
   if claude auth status >/dev/null 2>&1; then
-    info "Anthropic OAuth verified."
+    info "Anthropic authentication verified."
   else
-    warn "Auth not detected. You can retry: claude auth login"
-    wait_for_user "Press Enter to continue anyway (CTO will use Sonnet fallback)... "
+    warn "Auth not verified. You can retry later: claude setup-token"
   fi
 }
 
