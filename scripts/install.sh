@@ -342,24 +342,53 @@ print(d.get("oauthToken",""))
 
   # Save token and verify
   if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-    info "Verifying token..."
+    info "Verifying token with Claude Code CLI..."
     local probe
     probe="$(CLAUDE_CODE_OAUTH_TOKEN="$captured_token" claude -p "Reply exactly: AUTH_OK" --output-format text --permission-mode default 2>&1 || true)"
     if echo "$probe" | grep -q "AUTH_OK"; then
-      info "Token verified — Claude responds."
-      save_auth_token "$captured_token"
-      upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
+      info "Claude Code CLI — authenticated and responding."
     else
       error "Token verification failed: $probe"
       error "The token may be expired or invalid."
       error "Try running 'claude setup-token' again to get a fresh token."
-      # Still save it — user may fix later
-      save_auth_token "$captured_token"
-      upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
     fi
+    # Save everywhere regardless — gateway, code agent, and runtime all need it
+    # 1. .env — gateway and code_agent_exec.py read this
+    upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
+    # 2. auth-profiles.json — OpenClaw runtime auth
+    save_auth_token "$captured_token"
+    # 3. Export for remainder of this script
+    export CLAUDE_CODE_OAUTH_TOKEN="$captured_token"
+    info "Token saved to .env + auth-profiles.json"
   else
     warn "No valid token captured."
     warn "Run 'claude setup-token' after installation to configure auth."
+  fi
+}
+
+# ── Stage 3b: Verify Claude Code CLI ────────────────────────
+
+verify_claude_code() {
+  info "Verifying Claude Code CLI works..."
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    # Try loading from .env
+    if [ -f "$OPENCLAW_HOME/.env" ]; then
+      CLAUDE_CODE_OAUTH_TOKEN="$(grep '^CLAUDE_CODE_OAUTH_TOKEN=' "$OPENCLAW_HOME/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+      export CLAUDE_CODE_OAUTH_TOKEN
+    fi
+  fi
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    warn "No CLAUDE_CODE_OAUTH_TOKEN — Claude Code CLI not authenticated."
+    warn "CTO agent will not be able to run code agents."
+    return 0
+  fi
+  local probe
+  probe="$(CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" claude -p "Reply exactly: CLAUDE_CODE_OK" --output-format text --permission-mode default 2>&1 || true)"
+  if echo "$probe" | grep -q "CLAUDE_CODE_OK"; then
+    info "Claude Code CLI verified — ready for code agent tasks."
+  else
+    warn "Claude Code CLI probe failed. Code agent tasks may not work."
+    warn "Check: CLAUDE_CODE_OAUTH_TOKEN in $OPENCLAW_HOME/.env"
   fi
 }
 
@@ -698,25 +727,28 @@ main() {
   os="$(detect_os)"
   info "Detected OS: $os"
 
-  info "Step 1/7: System dependencies"
+  info "Step 1/8: System dependencies"
   install_deps "$os"
 
-  info "Step 2/7: OpenClaw + Lobster + Claude Code"
+  info "Step 2/8: OpenClaw + Lobster + Claude Code CLIs"
   install_tools "$os"
 
-  info "Step 3/7: Anthropic authentication"
+  info "Step 3/8: Anthropic authentication (setup-token)"
   setup_anthropic_auth
 
-  info "Step 4/7: OpenClaw config + gateway"
+  info "Step 4/8: Verify Claude Code CLI"
+  verify_claude_code
+
+  info "Step 5/8: OpenClaw config + gateway"
   setup_openclaw
 
-  info "Step 5/7: Telegram setup + pairing"
+  info "Step 6/8: Telegram setup + pairing"
   setup_telegram
 
-  info "Step 6/7: Deploy CTO Factory"
+  info "Step 7/8: Deploy CTO Factory"
   deploy_cto
 
-  info "Step 7/7: Validate + restart"
+  info "Step 8/8: Validate + restart"
   finalize
 
   echo ""
