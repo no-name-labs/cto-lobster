@@ -40,6 +40,8 @@ prompt_value() {
     [ "$optional" = "true" ] && return 0
     die "Missing required: $var_name (NON_INTERACTIVE=true)"
   fi
+  # Flush tty input buffer
+  read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
   local entered=""
   if [ "$optional" = "true" ]; then
     read -r -p "$prompt_text (optional, Enter to skip): " entered </dev/tty
@@ -58,6 +60,8 @@ prompt_secret() {
   if [ "$NON_INTERACTIVE" = "true" ]; then
     die "Missing required: $var_name (NON_INTERACTIVE=true)"
   fi
+  # Flush tty input buffer (previous commands may leave garbage)
+  read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
   local entered=""
   while [ -z "$entered" ]; do
     read -r -s -p "$prompt_text: " entered </dev/tty; echo
