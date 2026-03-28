@@ -184,35 +184,51 @@ setup_anthropic_auth() {
     return 0
   fi
 
-  echo ""
-  echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  Anthropic OAuth Login                                  ║"
-  echo "║                                                         ║"
-  echo "║  You need an Anthropic account with Claude Opus access. ║"
-  echo "║  The login will show a URL — open it in a browser,     ║"
-  echo "║  sign in, and paste the code back here.                 ║"
-  echo "║                                                         ║"
-  echo "║  For headless servers: copy the URL to your local       ║"
-  echo "║  browser, complete login, paste the code back.          ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
-  echo ""
-
   if [ "$NON_INTERACTIVE" = "true" ]; then
     warn "Non-interactive mode: skipping OAuth login. Run 'claude auth login' manually."
     return 0
   fi
 
-  wait_for_user "Press Enter to start Anthropic login... "
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║  Anthropic OAuth Login                                      ║"
+  echo "║                                                              ║"
+  echo "║  You need an Anthropic account with Claude Opus access.     ║"
+  echo "║                                                              ║"
+  echo "║  What will happen:                                          ║"
+  echo "║  1. We run 'claude auth login' — it prints an OAuth URL     ║"
+  echo "║  2. Copy that URL and open it in YOUR browser (laptop/PC)   ║"
+  echo "║  3. Sign in to Anthropic, authorize Claude Code             ║"
+  echo "║  4. The CLI will detect the login automatically             ║"
+  echo "║                                                              ║"
+  echo "║  If it hangs after you authorized — press Ctrl+C and       ║"
+  echo "║  the installer will continue. Auth is usually saved.        ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+  wait_for_user "Press Enter to start 'claude auth login'... "
 
-  # Run claude auth login interactively
+  # Run interactively with /dev/tty
   claude auth login </dev/tty >/dev/tty 2>&1 || true
 
+  echo ""
   # Verify
   if claude auth status >/dev/null 2>&1; then
     info "Anthropic OAuth verified."
   else
-    warn "Claude auth not detected. You can retry later with: claude auth login"
-    wait_for_user "Press Enter to continue anyway... "
+    echo ""
+    echo "  Auth not detected yet. Two options:"
+    echo ""
+    echo "  a) Open another terminal, run:  claude auth login"
+    echo "     Complete the login there, then come back here."
+    echo ""
+    echo "  b) Continue without auth — CTO will try Sonnet fallback."
+    echo ""
+    wait_for_user "Press Enter when ready to continue... "
+    if claude auth status >/dev/null 2>&1; then
+      info "Anthropic OAuth verified."
+    else
+      warn "Continuing without auth. Run 'claude auth login' later to enable Opus."
+    fi
   fi
 }
 
