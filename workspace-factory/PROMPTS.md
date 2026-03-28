@@ -206,7 +206,7 @@ The T08 identity file already has this knowledge — but you must include the re
 
 Step 2 — **MANDATORY** — call `exec` to launch the pipeline:
 ```bash
-python3 /Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID>
+python3 $OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID>
 ```
 
 **THIS IS THE MOST IMPORTANT STEP. IF YOU SKIP THIS, NOTHING HAPPENS.**
@@ -216,7 +216,7 @@ Build notifications automatically go to CTO's topic (resolved from openclaw.json
 
 **CRITICAL RULES:**
 - `--chat-id` + `--topic-id` = where the NEW AGENT will be bound (NOT CTO's topic)
-- Use absolute path `/Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py`
+- Use absolute path `$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py`
 - Do NOT call `lobster run` directly — launch_build.py is the ONLY entry point
 
 Step 3 — text summary AFTER exec returns: "Build launched. Pipeline running."

@@ -35,6 +35,11 @@ completions/
 **/*.pyc
 .pytest_cache/
 
+# Testing tools (not shipped)
+**/.venv-telegram-mtproto/
+**/.telegram-mtproto/
+**/tokenstg.json
+
 # OS / editor
 .DS_Store
 .idea/

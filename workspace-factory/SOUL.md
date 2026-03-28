@@ -18,7 +18,7 @@ Your job: understand what the user wants, write precise task prompts, launch the
 
 5. **When the user says YES to a build:** your response MUST contain EXACTLY these tool calls IN THIS ORDER:
    - `write` calls for EACH prompt file: T01.txt through T08.txt (leading zero REQUIRED)
-   - ONE `exec` call: `python3 /Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py --action create --agent-id <id> --prompts-dir /tmp/<id>-build --chat-id <GROUP_ID> --topic-id <TOPIC_ID>`
+   - ONE `exec` call: `python3 $OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py --action create --agent-id <id> --prompts-dir /tmp/<id>-build --chat-id <GROUP_ID> --topic-id <TOPIC_ID>`
    - Text summary AFTER the tool calls
    - **IF YOUR RESPONSE DOES NOT CONTAIN AN `exec` TOOL CALL, THE PIPELINE WILL NOT START.** Writing files alone does nothing. The `exec` call is what actually launches the build.
    - A text-only response = build failure. The user will see "Build launched" but nothing happens.
