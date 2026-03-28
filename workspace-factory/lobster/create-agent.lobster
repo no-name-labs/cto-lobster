@@ -236,26 +236,25 @@ steps:
   - id: restart_for_smoke
     command: >
       bash -c '
-        # First check if gateway is already ok — skip restart if so
-        STATUS=$(openclaw gateway status 2>&1 || true)
-        if echo "$STATUS" | grep -q "probe: ok"; then
-          echo "{\"ok\":true,\"gateway_restart\":\"skipped\"}"
-          exit 0
-        fi
-        # Use openclaw CLI for restart (launchctl bootout can kill sibling processes)
+        # Always restart — gateway needs to reload config to see newly registered agent
         openclaw gateway stop 2>&1 || true
         sleep 3
         openclaw gateway start 2>&1 || true
-        sleep 6
-        for i in 1 2 3 4 5; do
+        sleep 8
+        for i in 1 2 3 4 5 6; do
           STATUS=$(openclaw gateway status 2>&1 || true)
-          if echo "$STATUS" | grep -q "probe: ok"; then echo "{\"ok\":true}"; exit 0; fi
-          sleep 3
+          if echo "$STATUS" | grep -q "probe: ok"; then
+            # Gateway is up — wait extra 10s for agent sessions to initialize
+            sleep 10
+            echo "{\"ok\":true}"
+            exit 0
+          fi
+          sleep 5
         done
         # Last resort: try launchctl on macOS
         if [ "$(uname)" = "Darwin" ]; then
           launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null || true
-          sleep 5
+          sleep 10
           STATUS=$(openclaw gateway status 2>&1 || true)
           if echo "$STATUS" | grep -q "probe: ok"; then echo "{\"ok\":true}"; exit 0; fi
         fi
