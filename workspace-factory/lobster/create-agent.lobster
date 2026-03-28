@@ -145,6 +145,22 @@ steps:
         echo "{\"ok\":true,\"steps_run\":$STEP_NUM}"
       '
 
+  # ── MID-PIPELINE CTO REPORT ──────────────────────────────────
+  - id: mid_pipeline_report
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        WS="$LOBSTER_ARG_WORKSPACE"
+        PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
+        TESTS=""
+        [ -d "$WS/tests" ] && TESTS=$(cd "$WS" && python3 -m pytest tests/ -q 2>&1 | tail -1 | grep -oE "[0-9]+ passed" || echo "")
+        CTO_PEER="$LOBSTER_ARG_CHAT_ID"
+        [ -n "$LOBSTER_ARG_TOPIC_ID" ] && CTO_PEER="${CTO_PEER}:topic:${LOBSTER_ARG_TOPIC_ID}"
+        [ -z "$CTO_PEER" ] && CTO_PEER="$CTO_TARGET"
+        openclaw agent --agent cto-factory --message "MIDPOINT_REPORT agent_id=$LOBSTER_ARG_AGENT_ID py_files=$PY tests=$TESTS workspace=$WS. All code steps complete. Validation starting next. Give the user a brief progress update." --deliver --reply-channel telegram --reply-to "$CTO_PEER" --timeout 60 --json 2>/dev/null || true
+        echo "{\"ok\":true}"
+      '
+
   # ── VALIDATION ────────────────────────────────────────────────
   - id: notify_validating
     command: >
@@ -304,8 +320,11 @@ steps:
           echo "$STATUS" | grep -q "probe: ok" && break
           sleep 5
         done
-        # Send direct command to CTO so it proactively reports to user
-        # Notification already sent to topic above
+        # Send PIPELINE_FAILED to CTO with --deliver to user topic
+        CTO_PEER="$LOBSTER_ARG_CHAT_ID"
+        [ -n "$LOBSTER_ARG_TOPIC_ID" ] && CTO_PEER="${CTO_PEER}:topic:${LOBSTER_ARG_TOPIC_ID}"
+        [ -z "$CTO_PEER" ] && CTO_PEER="$CTO_TARGET"
+        openclaw agent --agent cto-factory --message "PIPELINE_FAILED agent_id=$LOBSTER_ARG_AGENT_ID step=smoke error=agent_not_responding_after_4_attempts. Report this failure to the user and suggest next steps." --deliver --reply-channel telegram --reply-to "$CTO_PEER" --timeout 90 --json 2>/dev/null || true
         echo "{\"ok\":false,\"alive\":false}" >&2
         exit 1
       '
@@ -339,7 +358,11 @@ steps:
           MSG="🎉 $LOBSTER_ARG_AGENT_ID — BUILD COMPLETE | ${ELAPSED_MIN}m | $PY py files | $TESTS | Telegram topic $LOBSTER_ARG_TOPIC_ID"
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
         fi
-        # BUILD_DONE notification already sent to topic via openclaw message send above
+        # Send BUILD_DONE to CTO with --deliver so CTO writes a report to the topic
+        CTO_PEER="$LOBSTER_ARG_CHAT_ID"
+        [ -n "$LOBSTER_ARG_TOPIC_ID" ] && CTO_PEER="${CTO_PEER}:topic:${LOBSTER_ARG_TOPIC_ID}"
+        [ -z "$CTO_PEER" ] && CTO_PEER="$CTO_TARGET"
+        openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS elapsed=${ELAPSED_MIN}m topic=$LOBSTER_ARG_TOPIC_ID. Send a final build report to the user." --deliver --reply-channel telegram --reply-to "$CTO_PEER" --timeout 90 --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '
 

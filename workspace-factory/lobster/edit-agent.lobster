@@ -251,6 +251,10 @@ steps:
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID — EDIT COMPLETE | $PY py files | $TESTS" --json 2>/dev/null || true
         fi
         # Send direct command to CTO session so it proactively reports to user
-        # Notification already sent to topic above
+        # Send EDIT_DONE to CTO with --deliver so CTO writes a report to the topic
+        CTO_PEER="$LOBSTER_ARG_CHAT_ID"
+        [ -n "$LOBSTER_ARG_TOPIC_ID" ] && CTO_PEER="${CTO_PEER}:topic:${LOBSTER_ARG_TOPIC_ID}"
+        [ -z "$CTO_PEER" ] && CTO_PEER="$CTO_TARGET"
+        openclaw agent --agent cto-factory --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed py_files=$PY tests=$TESTS. Send edit completion report to the user." --deliver --reply-channel telegram --reply-to "$CTO_PEER" --timeout 90 --json 2>/dev/null || true
         echo "{\"ok\":true}"
       '
