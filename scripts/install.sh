@@ -706,7 +706,52 @@ PYEOF
   fi
 }
 
-# ── Stage 7: Validate + Final Restart ───────────────────────
+# ── Stage 7b: Restrict models to Anthropic only ─────────────
+
+sync_model_allowlist() {
+  info "Syncing model allowlist (Anthropic only)..."
+  with_openclaw_env python3 - "$OPENCLAW_HOME/openclaw.json" << 'PYEOF'
+import json, pathlib, subprocess, sys
+
+config_path = pathlib.Path(sys.argv[1])
+data = json.loads(config_path.read_text())
+
+# Query available anthropic models
+try:
+    out = subprocess.check_output(
+        ["openclaw", "models", "list", "--all", "--provider", "anthropic", "--plain"],
+        text=True, stderr=subprocess.DEVNULL, timeout=30
+    )
+    models = [m.strip() for m in out.splitlines() if m.strip().startswith("anthropic/")]
+except Exception:
+    # Fallback to known models
+    models = [
+        "anthropic/claude-opus-4-6",
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-haiku-4-5",
+    ]
+
+if not models:
+    print("No models found, skipping")
+    sys.exit(0)
+
+agents = data.setdefault("agents", {})
+defaults = agents.setdefault("defaults", {})
+model_cfg = defaults.setdefault("model", {})
+
+# Set allowlist — only anthropic models
+defaults["models"] = {m: {} for m in models}
+
+# Ensure primary is anthropic
+if not str(model_cfg.get("primary", "")).startswith("anthropic/"):
+    model_cfg["primary"] = "anthropic/claude-sonnet-4-6"
+
+config_path.write_text(json.dumps(data, indent=2) + "\n")
+print(f"Allowed {len(models)} Anthropic models")
+PYEOF
+}
+
+# ── Stage 8: Validate + Final Restart ───────────────────────
 
 finalize() {
   info "Validating config..."
@@ -743,28 +788,31 @@ main() {
   os="$(detect_os)"
   info "Detected OS: $os"
 
-  info "Step 1/8: System dependencies"
+  info "Step 1/9: System dependencies"
   install_deps "$os"
 
-  info "Step 2/8: OpenClaw + Lobster + Claude Code CLIs"
+  info "Step 2/9: OpenClaw + Lobster + Claude Code CLIs"
   install_tools "$os"
 
-  info "Step 3/8: Anthropic authentication (setup-token)"
+  info "Step 3/9: Anthropic authentication (setup-token)"
   setup_anthropic_auth
 
-  info "Step 4/8: Verify Claude Code CLI"
+  info "Step 4/9: Verify Claude Code CLI"
   verify_claude_code
 
-  info "Step 5/8: OpenClaw config + gateway"
+  info "Step 5/9: OpenClaw config + gateway"
   setup_openclaw
 
-  info "Step 6/8: Telegram setup + pairing"
+  info "Step 6/9: Telegram setup + pairing"
   setup_telegram
 
-  info "Step 7/8: Deploy CTO Factory"
+  info "Step 7/9: Deploy CTO Factory"
   deploy_cto
 
-  info "Step 8/8: Validate + restart"
+  info "Step 8/9: Restrict models to Anthropic"
+  sync_model_allowlist
+
+  info "Step 9/9: Validate + restart"
   finalize
 
   echo ""
