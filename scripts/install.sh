@@ -293,55 +293,54 @@ setup_anthropic_auth() {
 
   local captured_token=""
 
-  # Try auto-capture via script(1)
-  local setup_log
-  setup_log="$(mktemp)"
-  if command -v script >/dev/null 2>&1; then
-    script -q -e -c "claude setup-token" "$setup_log" </dev/tty >/dev/tty 2>&1 || true
-    captured_token="$(tr -d '\r' < "$setup_log" | sed -E 's/\x1B\[[0-9;?]*[A-Za-z]//g' | awk '
-      BEGIN{c=0;t=""} {gsub(/^[[:space:]]+|[[:space:]]+$/,"",$0);
-      if(c==1){if($0~/^[A-Za-z0-9._-]+$/){t=t$0;next}c=0}
-      if($0~/^sk-ant-oat[A-Za-z0-9._-]*$/){t=$0;c=1;next}}
-      END{if(t!="")print t}' | tail -1 || true)"
-  else
-    claude setup-token </dev/tty >/dev/tty 2>&1 || true
-  fi
-  rm -f "$setup_log"
+  # Run claude setup-token interactively (user follows URL, gets token, pastes it)
+  claude setup-token </dev/tty >/dev/tty 2>&1 || true
 
-  # If auto-capture failed, ask for manual paste (up to 3 attempts)
+  # After setup-token, check if Claude CLI is now authenticated
+  if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
+    info "Claude CLI authenticated via setup-token."
+    # Extract the token from Claude's own config
+    captured_token="$(claude auth status 2>/dev/null | python3 -c '
+import json,sys
+d=json.loads(sys.stdin.read())
+print(d.get("oauthToken",""))
+' 2>/dev/null || true)"
+  fi
+
+  # If still no token, ask to paste manually (up to 3 attempts)
   local attempt=0
   while [ -z "$captured_token" ] || ! echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; do
     attempt=$((attempt + 1))
     [ "$attempt" -gt 3 ] && break
     echo ""
-    echo "  Token not detected automatically."
-    echo "  If you see a token starting with sk-ant-oat... in the output above,"
-    echo "  paste it here. Or run 'claude setup-token' in another terminal"
-    echo "  and paste the token."
+    echo "  Token not detected. Paste the setup-token value (starts with sk-ant-oat...)."
+    echo "  If you need a new one, run 'claude setup-token' in another terminal."
     echo ""
-    read -r -s -p "  Paste token (sk-ant-oat...): " captured_token </dev/tty; echo
+    read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
+    read -r -p "  Token: " captured_token </dev/tty
     captured_token="$(echo "$captured_token" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
   done
 
-  # Save token everywhere OpenClaw might look
+  # Save token and verify
   if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-    info "Saving Anthropic token..."
-    # 1. auth-profiles.json (agent-level auth store)
-    save_auth_token "$captured_token"
-    # 2. CLAUDE_CODE_OAUTH_TOKEN in .env (Claude Code CLI picks this up)
-    upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
-    # 3. Verify it works
+    info "Verifying token..."
     local probe
     probe="$(CLAUDE_CODE_OAUTH_TOKEN="$captured_token" claude -p "Reply exactly: AUTH_OK" --output-format text --permission-mode default 2>&1 || true)"
     if echo "$probe" | grep -q "AUTH_OK"; then
-      info "Anthropic auth verified — Claude responds."
+      info "Token verified — Claude responds."
+      save_auth_token "$captured_token"
+      upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
     else
-      warn "Token saved but Claude probe failed. It may still work through OpenClaw."
+      error "Token verification failed: $probe"
+      error "The token may be expired or invalid."
+      error "Try running 'claude setup-token' again to get a fresh token."
+      # Still save it — user may fix later
+      save_auth_token "$captured_token"
+      upsert_env "$OPENCLAW_HOME/.env" "CLAUDE_CODE_OAUTH_TOKEN" "$captured_token"
     fi
   else
-    warn "No valid token. Agent won't work until you configure auth."
-    warn "Run: claude setup-token"
-    warn "Then: echo 'CLAUDE_CODE_OAUTH_TOKEN=<your-token>' >> $OPENCLAW_HOME/.env"
+    warn "No valid token captured."
+    warn "Run 'claude setup-token' after installation to configure auth."
   fi
 }
 
