@@ -357,39 +357,108 @@ PYEOF
 
 # ── Stage 5: Telegram Setup ─────────────────────────────────
 
+parse_telegram_topic_link() {
+  local link="$1" token="$2"
+  local parsed_json
+  parsed_json="$(python3 - "$link" "$token" << 'PYEOF'
+import json, re, sys
+from urllib.parse import urlparse
+
+raw = (sys.argv[1] or "").strip()
+bot_token = (sys.argv[2] or "").strip()
+
+if not raw:
+    raise SystemExit("Telegram link is empty.")
+if not re.match(r"^https?://", raw, flags=re.I):
+    raw = "https://" + raw
+
+parsed = urlparse(raw)
+host = parsed.netloc.lower()
+if host not in {"t.me", "www.t.me", "telegram.me", "www.telegram.me"}:
+    raise SystemExit("Unsupported Telegram host.")
+
+parts = [p for p in parsed.path.split("/") if p]
+if len(parts) < 2:
+    raise SystemExit("Invalid Telegram link format.")
+
+group_id = ""
+topic_id = ""
+
+if parts[0] == "c":
+    if len(parts) < 3:
+        raise SystemExit("Invalid t.me/c link: missing topic ID.")
+    topic_id = parts[2]
+    if parts[1].isdigit():
+        group_id = f"-100{parts[1]}"
+    else:
+        raise SystemExit("Use numeric t.me/c/<number>/<topic> link.")
+else:
+    username = parts[0]
+    topic_id = parts[1]
+    if not bot_token:
+        raise SystemExit("Username-based link requires bot token. Use t.me/c/<number>/<topic> instead.")
+    from urllib.request import Request, urlopen
+    url = f"https://api.telegram.org/bot{bot_token}/getChat?chat_id=@{username}"
+    with urlopen(Request(url, headers={"Accept": "application/json"}), timeout=15) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if not payload.get("ok"):
+        raise SystemExit(payload.get("description", "getChat failed"))
+    group_id = str(payload["result"]["id"])
+
+if not topic_id.isdigit():
+    raise SystemExit("Topic ID must be numeric.")
+
+print(json.dumps({"group_id": group_id, "topic_id": topic_id}))
+PYEOF
+)" || return 1
+  TELEGRAM_GROUP_ID="$(printf "%s" "$parsed_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['group_id'])")"
+  TELEGRAM_TOPIC_ID="$(printf "%s" "$parsed_json" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['topic_id'])")"
+}
+
 setup_telegram() {
   info "Setting up Telegram..."
 
   echo ""
-  echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  Telegram Setup                                         ║"
-  echo "║                                                         ║"
-  echo "║  CTO communicates via a Telegram group with topics.     ║"
-  echo "║  You need:                                              ║"
-  echo "║                                                         ║"
-  echo "║  1. Bot Token — create via @BotFather in Telegram:     ║"
-  echo "║     /newbot → pick name → copy the token               ║"
-  echo "║     Then add the bot to your group as admin.            ║"
-  echo "║                                                         ║"
-  echo "║  2. Group ID — add @raw_data_bot to your group,        ║"
-  echo "║     send any message, it replies with the group ID      ║"
-  echo "║     (starts with -100...). Then remove the bot.         ║"
-  echo "║                                                         ║"
-  echo "║  3. Topic ID — create a topic in the group (e.g.       ║"
-  echo "║     \"CTO Factory\"), open it, the URL contains the ID: ║"
-  echo "║     t.me/c/XXXXXXXXX/<TOPIC_ID>                        ║"
-  echo "║                                                         ║"
-  echo "║  4. Your user ID — send /start to @userinfobot         ║"
-  echo "║     It will reply with your numeric user ID.            ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
+  echo "╔═══════════════════════════════════════════════════════════════╗"
+  echo "║  Telegram Setup                                              ║"
+  echo "║                                                               ║"
+  echo "║  CTO lives in a Telegram group topic. You need:             ║"
+  echo "║                                                               ║"
+  echo "║  1. A Telegram group with Topics enabled                     ║"
+  echo "║  2. A bot — create via @BotFather (/newbot), add to group   ║"
+  echo "║     as admin (needs: send messages, manage topics)           ║"
+  echo "║  3. A topic for CTO — create one, e.g. \"CTO Factory\"       ║"
+  echo "║  4. Topic link — open the topic, copy its URL:              ║"
+  echo "║     https://t.me/c/XXXXXXXXX/YY                             ║"
+  echo "║                                                               ║"
+  echo "║  5. Your Telegram user ID — send /start to @userinfobot    ║"
+  echo "╚═══════════════════════════════════════════════════════════════╝"
   echo ""
 
-  prompt_secret TELEGRAM_BOT_TOKEN "Telegram Bot Token (from @BotFather)"
+  prompt_secret TELEGRAM_BOT_TOKEN "Bot Token (from @BotFather)"
   upsert_env "$OPENCLAW_HOME/.env" "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
 
-  prompt_value TELEGRAM_GROUP_ID "Telegram Group ID (e.g. -100XXXXXXXXXX)"
-  prompt_value TELEGRAM_TOPIC_ID "Telegram Topic ID for CTO"
-  prompt_value TELEGRAM_ALLOWED_USERS "Your Telegram user ID (for allowlist)"
+  # Parse topic link → group_id + topic_id
+  if [ -z "$TELEGRAM_GROUP_ID" ] || [ -z "$TELEGRAM_TOPIC_ID" ]; then
+    local topic_link=""
+    echo ""
+    echo "  Paste the Telegram topic link (e.g. https://t.me/c/3700389156/2):"
+    read -r -p "  Link: " topic_link </dev/tty
+    if [ -n "$topic_link" ]; then
+      if parse_telegram_topic_link "$topic_link" "$TELEGRAM_BOT_TOKEN"; then
+        info "Parsed: group=$TELEGRAM_GROUP_ID topic=$TELEGRAM_TOPIC_ID"
+      else
+        error "Could not parse link. Enter manually:"
+        prompt_value TELEGRAM_GROUP_ID "Group ID (e.g. -1001234567890)"
+        prompt_value TELEGRAM_TOPIC_ID "Topic ID (e.g. 42)"
+      fi
+    else
+      prompt_value TELEGRAM_GROUP_ID "Group ID (e.g. -1001234567890)"
+      prompt_value TELEGRAM_TOPIC_ID "Topic ID (e.g. 42)"
+    fi
+  fi
+
+  prompt_value TELEGRAM_ALLOWED_USERS "Your Telegram user ID (from @userinfobot)"
 
   local users_json="$TELEGRAM_ALLOWED_USERS"
 
