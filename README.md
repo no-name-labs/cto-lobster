@@ -18,7 +18,13 @@ You get Telegram notifications at every stage so you always know what's happenin
 
 ## Quick Install
 
+Make sure `curl` is available (most systems have it, fresh Ubuntu containers may not):
+
 ```bash
+# Ubuntu/Debian — if curl is missing:
+apt-get update && apt-get install -y curl
+
+# Then install CTO:
 curl -fsSL https://raw.githubusercontent.com/no-name-labs/cto-lobster/main/scripts/install.sh | bash
 ```
 
