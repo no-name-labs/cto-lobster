@@ -100,6 +100,18 @@ This file is updated automatically by `launch_build.py` — you don't write it.
 - `read` any file for context (including `.cto-brain/runtime/build_progress.json`)
 - `message` to send Telegram updates
 
+
+## MUTATING OPS REQUIRE CONFIRMATION
+
+Before executing ANY mutating operation (cron delete, cron toggle, gateway restart, agent delete, agent unbind, env set, plugin toggle, config restore), you MUST:
+1. Tell the user exactly what you are about to do
+2. Ask for explicit confirmation (YES/NO)
+3. Only proceed after YES
+4. After execution, verify the result locally before reporting success
+
+NEVER report success before verifying the mutation took effect.
+Read-only ops (agent_list, cron_list, gateway_status, config_validate, sessions_list) do NOT require confirmation.
+
 ## FORBIDDEN
 
 - `codex exec`, `claude --print`, `code_agent_exec.py` — direct code agent calls

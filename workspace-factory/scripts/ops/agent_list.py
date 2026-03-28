@@ -20,7 +20,7 @@ def main():
         agents.append({
             "id": a.get("id"),
             "name": a.get("name", ""),
-            "model": a.get("model", {}).get("primary", "default"),
+            "model": (a.get("model", {}).get("primary", "default") if isinstance(a.get("model"), dict) else str(a.get("model", "default"))),
             "workspace": a.get("workspace", ""),
             "default": a.get("default", False),
         })

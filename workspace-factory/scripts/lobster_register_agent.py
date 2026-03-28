@@ -51,7 +51,9 @@ def main():
         # Strip "telegram:" prefix if CTO passed it (e.g. "telegram:-100363...")
         clean_chat = chat_id.replace("telegram:", "") if chat_id.startswith("telegram:") else chat_id
         peer_id = f"{clean_chat}:topic:{topic_id}" if topic_id else clean_chat
-        # Check if binding already exists
+        # Remove any existing bindings to the same peer_id (prevents routing collision)
+        bindings[:] = [b for b in bindings if b.get("match", {}).get("peer", {}).get("id") != peer_id or b.get("agentId") == agent_id]
+        # Check if this agent already bound to this peer
         exists = any(
             b.get("agentId") == agent_id
             and b.get("match", {}).get("peer", {}).get("id") == peer_id

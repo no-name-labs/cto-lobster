@@ -588,7 +588,7 @@ def main():
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
         # Send CTO callback so it proactively reports to user
-        cto_callback(root, args.agent_id or "", args.action, "failed", elapsed, error_detail)
+        notify(notify_chat, notify_topic, f"❌ Pipeline failed: {args.agent_id or "unknown"} | {error_detail[:200]}")
         print(json.dumps({"ok": False, "exit_code": proc.returncode, "elapsed": elapsed, "error": error_detail}))
         return proc.returncode
 
@@ -603,7 +603,7 @@ def main():
         progress["workspace_stats"] = ws_info
         write_progress(root, progress)
         # Lobster callback_cto already notified topic — send CTO session callback
-        cto_callback(root, args.agent_id or "", args.action, "completed", elapsed, "")
+        notify(notify_chat, notify_topic, f"✅ Pipeline completed: {args.agent_id or "unknown"} ({elapsed}s)")
         print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}))
         return 0
 
@@ -631,7 +631,7 @@ def main():
             progress["elapsed_seconds"] = elapsed
             progress["workspace_stats"] = ws_info
             write_progress(root, progress)
-            cto_callback(root, args.agent_id or "", args.action, "completed", elapsed, "")
+            notify(notify_chat, notify_topic, f"✅ Pipeline completed: {args.agent_id or "unknown"} ({elapsed}s)")
             print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}, indent=2))
     else:
         error = result.get("error", {}).get("message", "unknown")
@@ -640,7 +640,7 @@ def main():
         progress["error"] = error
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
-        cto_callback(root, args.agent_id or "", args.action, "failed", elapsed, error)
+        notify(notify_chat, notify_topic, f"❌ Pipeline failed: {args.agent_id or "unknown"} | {error[:200]}")
         print(json.dumps({"ok": False, "error": error, "elapsed": elapsed}, indent=2))
         return 1
 

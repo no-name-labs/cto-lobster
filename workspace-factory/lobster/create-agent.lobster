@@ -111,7 +111,7 @@ steps:
           esac
           # ── Run code agent ──
           SNAPSHOT_BEFORE=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
-          python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$EXEC_FILE" --timeout 900 $MODEL_FLAG || true
+          python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_WORKSPACE" --prompt-file "$EXEC_FILE" --timeout 900 $MODEL_FLAG || true
           # ── Verify code agent actually did something ──
           SNAPSHOT_AFTER=$(find "$LOBSTER_ARG_WORKSPACE" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | wc -l | tr -d " ")
           if [ "$STEP_NUM" -gt 1 ] && [ "$SNAPSHOT_AFTER" -eq "$SNAPSHOT_BEFORE" ] && [ "$SNAPSHOT_AFTER" -eq 0 ]; then
@@ -305,7 +305,7 @@ steps:
           sleep 5
         done
         # Send direct command to CTO so it proactively reports to user
-        openclaw agent --agent cto-factory --timeout 90 --message "PIPELINE_FAILED agent_id=$LOBSTER_ARG_AGENT_ID step=smoke error=agent_not_responding_after_4_attempts. Report this failure to the user in CTO Lobster topic. Suggest checking workspace and gateway." --json 2>/dev/null || true
+        # Notification already sent to topic above
         echo "{\"ok\":false,\"alive\":false}" >&2
         exit 1
       '
@@ -314,6 +314,12 @@ steps:
   - id: callback_cto
     command: >
       bash -c '
+        # Wait for gateway to be healthy before sending callback
+        for _gw in 1 2 3 4 5 6 7 8; do
+          STATUS=$(openclaw gateway status 2>&1 || true)
+          echo "$STATUS" | grep -q "probe: ok" && break
+          sleep 5
+        done
         STATUS=$(openclaw gateway status 2>&1 || true)
         if ! echo "$STATUS" | grep -q "probe: ok"; then
           if [ "$(uname)" = "Darwin" ]; then
@@ -328,13 +334,12 @@ steps:
           WS="$LOBSTER_ARG_WORKSPACE"
           PY=$(find "$WS" -name "*.py" -not -path "*/__pycache__/*" 2>/dev/null | wc -l | tr -d " ")
           TESTS=$(cd "$WS" 2>/dev/null && python3 -m pytest tests/ -q 2>&1 | tail -1 || echo "no tests")
-          ELAPSED=$(($(date +%s) - $(stat -f %m "$WS/IDENTITY.md" 2>/dev/null || date +%s)))
+          ELAPSED=$(($(date +%s) - $(stat -c %Y "$WS/IDENTITY.md" 2>/dev/null || stat -f %m "$WS/IDENTITY.md" 2>/dev/null || date +%s)))
           ELAPSED_MIN=$((ELAPSED / 60))
           MSG="🎉 $LOBSTER_ARG_AGENT_ID — BUILD COMPLETE | ${ELAPSED_MIN}m | $PY py files | $TESTS | Telegram topic $LOBSTER_ARG_TOPIC_ID"
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
         fi
-        # Send direct command to CTO session so it proactively reports to user
-        openclaw agent --agent cto-factory --timeout 90 --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=create status=completed py_files=$PY tests=$TESTS elapsed=${ELAPSED_MIN}m topic=$LOBSTER_ARG_TOPIC_ID. Go to the user in CTO Lobster topic and send a final build report with these results." --json 2>/dev/null || true
+        # BUILD_DONE notification already sent to topic via openclaw message send above
         echo "{\"ok\":true}"
       '
 

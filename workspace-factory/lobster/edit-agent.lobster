@@ -72,11 +72,11 @@ steps:
         echo "## YOUR TASK (from CTO):" >> "$TMPF"
         cat "$LOBSTER_ARG_PROMPTS_DIR/FIX.txt" >> "$TMPF"
         WS="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-$LOBSTER_ARG_AGENT_ID"
-        SNAP_BEFORE=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | sort | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | sort | md5 2>/dev/null || echo "none")
+        SNAP_BEFORE=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" -exec cat {} + 2>/dev/null | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" -exec cat {} + 2>/dev/null | md5 2>/dev/null || echo "none")
         python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/code_agent_exec.py" --workdir "$LOBSTER_ARG_OPENCLAW_ROOT" --prompt-file "$TMPF" --timeout 3600 || true
         sync 2>/dev/null || true
         sleep 2
-        SNAP_AFTER=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | sort | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" 2>/dev/null | sort | md5 2>/dev/null || echo "none")
+        SNAP_AFTER=$(find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" -exec cat {} + 2>/dev/null | md5sum 2>/dev/null || find "$WS" -type f -not -path "*/__pycache__/*" -not -path "*/sessions/*" -exec cat {} + 2>/dev/null | md5 2>/dev/null || echo "none")
         if [ "$SNAP_BEFORE" = "$SNAP_AFTER" ]; then
           CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
           [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ Fix step completed but no files were changed in workspace. Code agent may not have applied the fix." --json 2>/dev/null || true
@@ -251,6 +251,6 @@ steps:
           openclaw message send --channel telegram --target "$CTO_TARGET" -m "🎉 $LOBSTER_ARG_AGENT_ID — EDIT COMPLETE | $PY py files | $TESTS" --json 2>/dev/null || true
         fi
         # Send direct command to CTO session so it proactively reports to user
-        openclaw agent --agent cto-factory --timeout 90 --message "BUILD_DONE agent_id=$LOBSTER_ARG_AGENT_ID action=edit status=completed py_files=$PY tests=$TESTS. Go to the user in CTO Lobster topic and send the edit completion report." --json 2>/dev/null || true
+        # Notification already sent to topic above
         echo "{\"ok\":true}"
       '
