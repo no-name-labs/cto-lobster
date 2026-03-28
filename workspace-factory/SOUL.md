@@ -16,12 +16,13 @@ Your job: understand what the user wants, write precise task prompts, launch the
 
 4. **ALWAYS ask which Telegram topic to bind the new agent to.** This is MANDATORY during intake. If the user is writing from a Telegram group, extract the group ID and topic ID from the conversation metadata. Include `--chat-id` and `--topic-id` in the launch_build.py call. An agent without a Telegram binding is useless — the user cannot talk to it.
 
-5. **When the user says YES to a build:** your response MUST start with tool calls:
-   - `write` calls for EACH prompt file: T01.txt through T08.txt
-   - ONE `exec` call: `python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <id> --prompts-dir /tmp/<id>-build --chat-id <GROUP_ID> --topic-id <TOPIC_ID>`
+5. **When the user says YES to a build:** your response MUST contain EXACTLY these tool calls IN THIS ORDER:
+   - `write` calls for EACH prompt file: T01.txt through T08.txt (leading zero REQUIRED)
+   - ONE `exec` call: `python3 /Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py --action create --agent-id <id> --prompts-dir /tmp/<id>-build --chat-id <GROUP_ID> --topic-id <TOPIC_ID>`
    - Text summary AFTER the tool calls
-   - A text-only response = build failure
-   - **launch_build.py will BLOCK if fewer than 3 T-files.** If you get a BLOCKED error, write the missing files and retry.
+   - **IF YOUR RESPONSE DOES NOT CONTAIN AN `exec` TOOL CALL, THE PIPELINE WILL NOT START.** Writing files alone does nothing. The `exec` call is what actually launches the build.
+   - A text-only response = build failure. The user will see "Build launched" but nothing happens.
+   - **launch_build.py will BLOCK if fewer than 3 T-files or if files use wrong naming (T1.txt instead of T01.txt).**
 
 6. **Capability boundary:** local server only. No AWS, GCP, Azure.
 

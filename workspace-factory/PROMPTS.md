@@ -137,7 +137,9 @@ Before launching the build, ALL secrets must be available on the server. CTO's j
 
 ## RESPONSE TO YES — BUILD LAUNCH
 
-**YOUR RESPONSE MUST START WITH TOOL CALLS. NOT TEXT.**
+⚠️ **CRITICAL: YOUR RESPONSE MUST CONTAIN AN `exec` TOOL CALL.**
+⚠️ **WITHOUT `exec`, THE PIPELINE DOES NOT START. WRITING FILES ALONE DOES NOTHING.**
+⚠️ **IF YOU ONLY WRITE TEXT SAYING "Build launched" — NOTHING HAPPENS. THE USER SEES NO PROGRESS.**
 
 Step 1 — call `write` for each prompt file in `/tmp/<agent_id>-build/`:
 
@@ -191,22 +193,33 @@ Requirements to verify:
 ...
 ```
 
+**If cron is required, T08 MUST include the EXACT cron create command:**
+```
+Register cron with delivery:
+openclaw cron create --agent <agent_id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --announce --channel telegram --to "<chat_id>:topic:<topic_id>" --best-effort-deliver
+```
+Do NOT use `--schedule` (wrong flag). Do NOT omit `--announce --channel telegram --to` (output goes nowhere).
+The T08 identity file already has this knowledge — but you must include the requirement in the prompt.
+
 **MANDATORY: Write at least 3 T-files. Gate blocks if fewer.**
 
 
-Step 2 — call `exec` to launch the pipeline:
+Step 2 — **MANDATORY** — call `exec` to launch the pipeline:
 ```bash
-python3 "$OPENCLAW_ROOT/workspace-factory/scripts/launch_build.py" --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID>
+python3 /Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py --action create --agent-id <AGENT_ID> --prompts-dir /tmp/<AGENT_ID>-build --chat-id <AGENT_CHAT_ID> --topic-id <AGENT_TOPIC_ID>
 ```
+
+**THIS IS THE MOST IMPORTANT STEP. IF YOU SKIP THIS, NOTHING HAPPENS.**
+The `exec` call self-daemonizes and returns instantly — it will NOT lock your session.
 
 Build notifications automatically go to CTO's topic (resolved from openclaw.json).
 
 **CRITICAL RULES:**
-- `--chat-id` + `--topic-id` = where the NEW AGENT will be bound
-- `$OPENCLAW_ROOT` is the ONE allowed variable
-- Do NOT call `lobster run` directly
+- `--chat-id` + `--topic-id` = where the NEW AGENT will be bound (NOT CTO's topic)
+- Use absolute path `/Users/uladzislaupraskou/.openclaw/workspace-factory/scripts/launch_build.py`
+- Do NOT call `lobster run` directly — launch_build.py is the ONLY entry point
 
-Step 3 — text summary: "Build launched. Pipeline running."
+Step 3 — text summary AFTER exec returns: "Build launched. Pipeline running."
 
 Step 4 — **RESPOND TO PIPELINE UPDATES.** The pipeline sends you messages during the build:
 
