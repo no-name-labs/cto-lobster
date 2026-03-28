@@ -652,7 +652,7 @@ deploy_cto() {
 
   rsync -av --delete \
     --exclude='.cto-brain' --exclude='__pycache__' --exclude='.pytest_cache' \
-    --exclude='auth-profiles.json' \
+    --exclude='auth-profiles.json' --exclude='sessions' --exclude='.openclaw' \
     "$tmp_dir/cto/workspace-factory/" "$dest/" 2>&1 | tail -1
 
   chmod +x "$dest/scripts/"*.sh "$dest/scripts/"*.py 2>/dev/null || true

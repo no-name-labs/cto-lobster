@@ -52,6 +52,9 @@ rsync -av --delete \
   --exclude='__pycache__' \
   --exclude='.pytest_cache' \
   --exclude='node_modules' \
+  --exclude='auth-profiles.json' \
+  --exclude='sessions' \
+  --exclude='.openclaw' \
   "${REPO_ROOT}/workspace-factory/" "${WORKSPACE_DEST}/"
 
 chmod +x "${WORKSPACE_DEST}/scripts/"*.sh 2>/dev/null || true
@@ -106,6 +109,8 @@ plugins.setdefault("entries", {})["lobster"] = {"enabled": True}
 if group_id:
     bindings = d.setdefault("bindings", [])
     peer_id = f"{group_id}:topic:{topic_id}" if topic_id else group_id
+    # Remove old bindings to same peer (prevents routing collision)
+    bindings[:] = [b for b in bindings if b.get("match", {}).get("peer", {}).get("id") != peer_id or b.get("agentId") == "cto-factory"]
     exists = any(
         b.get("agentId") == "cto-factory"
         and b.get("match", {}).get("peer", {}).get("id") == peer_id
