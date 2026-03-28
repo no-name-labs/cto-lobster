@@ -588,9 +588,17 @@ deploy_cto() {
 
   rsync -av --delete \
     --exclude='.cto-brain' --exclude='__pycache__' --exclude='.pytest_cache' \
+    --exclude='auth-profiles.json' \
     "$tmp_dir/cto/workspace-factory/" "$dest/" 2>&1 | tail -1
 
   chmod +x "$dest/scripts/"*.sh "$dest/scripts/"*.py 2>/dev/null || true
+
+  # Copy auth-profiles from main agent (written in auth step) into CTO workspace
+  local main_auth="$OPENCLAW_HOME/agents/main/agent/auth-profiles.json"
+  if [ -f "$main_auth" ]; then
+    cp "$main_auth" "$dest/auth-profiles.json"
+    info "Auth-profiles copied to CTO workspace"
+  fi
 
   # Register CTO agent with binding
   python3 "$dest/scripts/lobster_register_agent.py" \
@@ -694,14 +702,23 @@ main() {
   finalize
 
   echo ""
+  local display_gw_token
+  display_gw_token="$(grep 'OPENCLAW_GATEWAY_TOKEN=' "$OPENCLAW_HOME/.env" 2>/dev/null | head -1 | cut -d= -f2- || echo 'not set')"
+
   echo "╔══════════════════════════════════════════════════════════╗"
   echo "║  🎉 CTO Factory installed!                              ║"
-  echo "║                                                         ║"
-  echo "║  Test:                                                  ║"
-  echo "║    openclaw agent --agent cto-factory --message 'hello' ║"
-  echo "║                                                         ║"
-  echo "║  Or talk to CTO in your Telegram topic.                 ║"
   echo "╚══════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  Test via CLI:"
+  echo "    openclaw agent --agent cto-factory --message 'hello'"
+  echo ""
+  echo "  Or talk to CTO in your Telegram topic."
+  echo ""
+  echo "  Gateway dashboard token (save it!):"
+  echo "    $display_gw_token"
+  echo ""
+  echo "  Config: $OPENCLAW_HOME/openclaw.json"
+  echo "  Logs:   $OPENCLAW_HOME/logs/gateway-run.log"
   echo ""
 }
 
