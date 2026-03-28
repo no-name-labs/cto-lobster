@@ -151,7 +151,7 @@ steps:
           fi
           if [ "$ATTEMPT" -lt 3 ]; then
             [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⏳ Smoke attempt $ATTEMPT failed, retrying in 15s..." --json 2>/dev/null || true
-            sleep 15
+            sleep 30
           fi
         done
         [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "❌ Pipeline failed: smoke | Agent not responding after 3 attempts | Agent: $LOBSTER_ARG_AGENT_ID" --json 2>/dev/null || true

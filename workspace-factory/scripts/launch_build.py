@@ -142,6 +142,49 @@ def notify(chat_id: str, topic_id: str, message: str):
         pass
 
 
+def cto_callback(root: str, agent_id: str, action: str, status: str, elapsed: int, error: str):
+    """Send a direct message to CTO's agent session so it proactively reports to user.
+    Unlike notify() which just posts to Telegram topic (CTO never sees it),
+    this creates a new turn in CTO's session via openclaw agent CLI."""
+    elapsed_min = elapsed // 60
+    if status == "failed":
+        msg = (
+            f"PIPELINE_FAILED agent_id={agent_id} action={action} "
+            f"elapsed={elapsed_min}m error={error[:200]}. "
+            f"Report this failure to the user in your Telegram topic immediately. "
+            f"Include: what failed, why, and what to do next."
+        )
+    else:
+        msg = (
+            f"BUILD_DONE agent_id={agent_id} action={action} "
+            f"status=completed elapsed={elapsed_min}m. "
+            f"Send a build completion report to the user in your Telegram topic. "
+            f"Include: files created, tests passed, binding info."
+        )
+    # Wait for gateway to be ready
+    for _ in range(5):
+        try:
+            probe = subprocess.run(
+                ["openclaw", "gateway", "status"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "probe: ok" in probe.stdout:
+                break
+        except Exception:
+            pass
+        time.sleep(5)
+    # Send to CTO session
+    try:
+        subprocess.run(
+            ["openclaw", "agent", "--agent", "cto-factory",
+             "--message", msg, "--json", "--timeout", "90"],
+            capture_output=True, text=True, timeout=120,
+        )
+        log(f"CTO callback sent: {status}")
+    except Exception as e:
+        log(f"CTO callback failed: {e}")
+
+
 def detect_active_step(prompts_dir: str) -> str | None:
     """Check which prompt file is currently being processed by code agent.
     Uses two methods: ps aux for active process, and context dir for completed steps."""
@@ -536,14 +579,16 @@ def main():
 
     if proc.returncode != 0:
         error_detail = stderr[:500] if stderr else stdout[:500]
-        msg = f"❌ <b>Pipeline failed</b> (exit {proc.returncode}, {elapsed}s)\n<pre>{error_detail}</pre>"
+        # Don't duplicate lobster step notifications — they already sent PIPELINE_FAILED
+        # Just log and update progress
         log(f"FAILED: exit {proc.returncode} after {elapsed}s")
         log(f"  {error_detail}")
-        notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
         progress["error"] = error_detail
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
+        # Send CTO callback so it proactively reports to user
+        cto_callback(root, args.agent_id or "", args.action, "failed", elapsed, error_detail)
         print(json.dumps({"ok": False, "exit_code": proc.returncode, "elapsed": elapsed, "error": error_detail}))
         return proc.returncode
 
@@ -553,10 +598,12 @@ def main():
     except (json.JSONDecodeError, ValueError):
         log(f"Completed in {elapsed}s (non-JSON output)")
         ws_info = count_workspace_files(workspace) if workspace else {}
-        msg = f"✅ <b>Pipeline completed</b> ({elapsed}s)"
-        if ws_info.get("py_files"):
-            msg += f"\n{ws_info['py_files']} Python files, {ws_info.get('test_files', 0)} test files"
-        notify(notify_chat, notify_topic, msg)
+        progress["status"] = "completed"
+        progress["elapsed_seconds"] = elapsed
+        progress["workspace_stats"] = ws_info
+        write_progress(root, progress)
+        # Lobster callback_cto already notified topic — send CTO session callback
+        cto_callback(root, args.agent_id or "", args.action, "completed", elapsed, "")
         print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}))
         return 0
 
@@ -566,13 +613,9 @@ def main():
             approval = result.get("requiresApproval", {})
             token = approval.get("resumeToken", "")
             items = approval.get("items", [])
-            msg = (
-                f"🔒 <b>Approval needed</b> ({elapsed}s)\n"
-                f"Items: {json.dumps(items)}\n"
-                f"Reply YES to approve or NO to reject."
-            )
             log(f"APPROVAL NEEDED after {elapsed}s")
-            notify(notify_chat, notify_topic, msg)
+            notify(notify_chat, notify_topic,
+                   f"🔒 Approval needed ({elapsed}s). Reply YES to approve or NO to reject.")
             progress["status"] = "approval_needed"
             progress["resume_token"] = token
             progress["elapsed_seconds"] = elapsed
@@ -583,25 +626,21 @@ def main():
             }, indent=2))
         else:
             ws_info = count_workspace_files(workspace) if workspace else {}
-            msg = f"✅ <b>Build complete: {args.agent_id}</b> ({elapsed}s)"
-            if ws_info.get("py_files"):
-                msg += f"\n📦 {ws_info['py_files']} Python files, {ws_info.get('test_files', 0)} test files"
             log(f"SUCCESS after {elapsed}s")
-            notify(notify_chat, notify_topic, msg)
             progress["status"] = "completed"
             progress["elapsed_seconds"] = elapsed
             progress["workspace_stats"] = ws_info
             write_progress(root, progress)
+            cto_callback(root, args.agent_id or "", args.action, "completed", elapsed, "")
             print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}, indent=2))
     else:
         error = result.get("error", {}).get("message", "unknown")
-        msg = f"❌ <b>Pipeline failed</b>: {error} ({elapsed}s)"
         log(f"PIPELINE FAILED: {error}")
-        notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
         progress["error"] = error
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
+        cto_callback(root, args.agent_id or "", args.action, "failed", elapsed, error)
         print(json.dumps({"ok": False, "error": error, "elapsed": elapsed}, indent=2))
         return 1
 
