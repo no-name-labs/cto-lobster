@@ -53,6 +53,38 @@ prompt_value() {
   printf -v "$var_name" "%s" "$entered"
 }
 
+read_masked() {
+  # Read secret with real-time * masking. Works for typing AND paste.
+  # Uses stty raw mode + dd for char-by-char reading.
+  local prompt="${1:-Secret}"
+  local input="" char=""
+  printf "%s: " "$prompt" >/dev/tty
+  local old_tty
+  old_tty="$(stty -g </dev/tty 2>/dev/null || true)"
+  stty -echo -icanon min 1 </dev/tty 2>/dev/null || true
+  while true; do
+    char="$(dd bs=1 count=1 </dev/tty 2>/dev/null)" || break
+    case "$(printf '%d' "'$char" 2>/dev/null || echo 0)" in
+      10|13) break ;;       # Enter / CR
+      127|8)                 # Backspace / DEL
+        if [ -n "$input" ]; then
+          input="${input%?}"
+          printf "\b \b" >/dev/tty
+        fi ;;
+      0) break ;;           # EOF / null
+      *)
+        input="${input}${char}"
+        printf "*" >/dev/tty ;;
+    esac
+  done
+  stty "$old_tty" </dev/tty 2>/dev/null || true
+  echo "" >/dev/tty
+  if [ -n "$input" ]; then
+    printf "  ✓ %d chars (ends ...%s)\n" "${#input}" "${input: -4}" >/dev/tty
+  fi
+  printf "%s" "$input"
+}
+
 prompt_secret() {
   local var_name="$1" prompt_text="$2"
   local current="${!var_name:-}"
@@ -60,11 +92,11 @@ prompt_secret() {
   if [ "$NON_INTERACTIVE" = "true" ]; then
     die "Missing required: $var_name (NON_INTERACTIVE=true)"
   fi
-  # Flush tty input buffer (previous commands may leave garbage)
   read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
   local entered=""
   while [ -z "$entered" ]; do
-    read -r -s -p "$prompt_text: " entered </dev/tty; echo
+    entered="$(read_masked "$prompt_text")"
+    [ -z "$entered" ] && echo "  Value cannot be empty." >/dev/tty
   done
   printf -v "$var_name" "%s" "$entered"
 }
@@ -315,45 +347,14 @@ print(d.get("oauthToken",""))
     echo ""
     echo "  ┌─────────────────────────────────────────────────────────┐"
     echo "  │  Copy the FULL token from above (it may wrap 2 lines)  │"
-    echo "  │  Paste it below, then press Enter TWICE to confirm.    │"
-    echo "  │                                                         │"
+    echo "  │  Paste it as ONE line and press Enter.                  │"
     echo "  │  Token starts with: sk-ant-oat01-...                   │"
     echo "  └─────────────────────────────────────────────────────────┘"
     echo ""
     read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
-    # Read with real-time masking (char by char)
-    # Two Enter presses (empty line) to finish — supports multi-line paste
-    local token_lines="" current_line="" char="" empty_enters=0
-    printf "  Token> " >/dev/tty
-    while true; do
-      IFS= read -r -s -n1 char </dev/tty || break
-      if [ -z "$char" ]; then
-        # Enter pressed
-        echo "" >/dev/tty
-        if [ -z "$current_line" ]; then
-          # Empty line = done
-          break
-        fi
-        token_lines="${token_lines}${current_line}"
-        current_line=""
-        printf "       > " >/dev/tty
-      elif [ "$char" = $'\x7f' ] || [ "$char" = $'\b' ]; then
-        # Backspace
-        if [ -n "$current_line" ]; then
-          current_line="${current_line%?}"
-          printf "\b \b" >/dev/tty
-        fi
-      else
-        current_line="${current_line}${char}"
-        printf "*" >/dev/tty
-      fi
-    done
-    # Append any remaining line
-    token_lines="${token_lines}${current_line}"
-    captured_token="$(echo "$token_lines" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
-    if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-      echo "  ✓ Token captured (${#captured_token} chars, ends with ...${captured_token: -6})"
-    fi
+    local raw_token
+    raw_token="$(read_masked "  Token")"
+    captured_token="$(echo "$raw_token" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
   done
 
   # Save token and verify
