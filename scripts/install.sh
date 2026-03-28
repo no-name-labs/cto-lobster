@@ -133,6 +133,28 @@ detect_os() {
   esac
 }
 
+save_auth_token() {
+  local token="$1"
+  # Save to workspace-factory (CTO agent reads from here)
+  local auth_store="$OPENCLAW_HOME/workspace-factory/auth-profiles.json"
+  mkdir -p "$(dirname "$auth_store")"
+  python3 - "$auth_store" "$token" << 'PYEOF'
+import json, pathlib, sys, time
+p = pathlib.Path(sys.argv[1]); t = sys.argv[2].strip()
+p.parent.mkdir(parents=True, exist_ok=True)
+d = json.loads(p.read_text()) if p.exists() else {}
+d["version"] = 1
+d.setdefault("profiles", {})["anthropic:oauth"] = {
+    "type": "token", "provider": "anthropic", "token": t,
+    "expires": int(time.time() * 1000) + 365*24*60*60*1000}
+p.write_text(json.dumps(d, indent=2) + "\n")
+PYEOF
+  # Also save to agents/main/agent/ (some OpenClaw versions look here)
+  local main_auth="$OPENCLAW_HOME/agents/main/agent/auth-profiles.json"
+  mkdir -p "$(dirname "$main_auth")"
+  cp "$auth_store" "$main_auth" 2>/dev/null || true
+}
+
 # ── Parse Telegram topic link ───────────────────────────────
 
 parse_telegram_topic_link() {
@@ -219,7 +241,7 @@ install_deps() {
       run_root bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
       run_root apt-get install -y -qq nodejs
     fi
-    run_root apt-get install -y -qq git python3 curl jq rsync
+    run_root apt-get install -y -qq git python3 curl jq rsync cron
   elif [ "$os" = "macos" ]; then
     command -v node >/dev/null 2>&1 || { command -v brew >/dev/null 2>&1 && brew install node || die "Install Node.js"; }
     for cmd in git python3 curl jq; do command -v "$cmd" >/dev/null 2>&1 || die "Missing: $cmd"; done
@@ -265,11 +287,13 @@ setup_anthropic_auth() {
   echo "╚═══════════════════════════════════════════════════════════════╝"
   echo ""
 
-  local setup_log captured_token=""
+  local captured_token=""
+
+  # Try auto-capture via script(1)
+  local setup_log
   setup_log="$(mktemp)"
   if command -v script >/dev/null 2>&1; then
     script -q -e -c "claude setup-token" "$setup_log" </dev/tty >/dev/tty 2>&1 || true
-    # Extract sk-ant-oat token from log
     captured_token="$(tr -d '\r' < "$setup_log" | sed -E 's/\x1B\[[0-9;?]*[A-Za-z]//g' | awk '
       BEGIN{c=0;t=""} {gsub(/^[[:space:]]+|[[:space:]]+$/,"",$0);
       if(c==1){if($0~/^[A-Za-z0-9._-]+$/){t=t$0;next}c=0}
@@ -280,27 +304,30 @@ setup_anthropic_auth() {
   fi
   rm -f "$setup_log"
 
-  if [ -n "$captured_token" ]; then
-    info "Token captured, saving to auth-profiles..."
-    local auth_store="$OPENCLAW_HOME/workspace-factory/auth-profiles.json"
-    mkdir -p "$(dirname "$auth_store")"
-    python3 - "$auth_store" "$captured_token" << 'PYEOF'
-import json, pathlib, sys, time
-p = pathlib.Path(sys.argv[1]); t = sys.argv[2].strip()
-p.parent.mkdir(parents=True, exist_ok=True)
-d = json.loads(p.read_text()) if p.exists() else {}
-d["version"] = 1
-d.setdefault("profiles", {})["anthropic:oauth"] = {
-    "type": "token", "provider": "anthropic", "token": t,
-    "expires": int(time.time() * 1000) + 365*24*60*60*1000}
-p.write_text(json.dumps(d, indent=2) + "\n")
-PYEOF
-  fi
+  # If auto-capture failed, ask for manual paste (up to 3 attempts)
+  local attempt=0
+  while [ -z "$captured_token" ] || ! echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -gt 3 ] && break
+    echo ""
+    echo "  Token not detected automatically."
+    echo "  If you see a token starting with sk-ant-oat... in the output above,"
+    echo "  paste it here. Or run 'claude setup-token' in another terminal"
+    echo "  and paste the token."
+    echo ""
+    read -r -s -p "  Paste token (sk-ant-oat...): " captured_token </dev/tty; echo
+    captured_token="$(echo "$captured_token" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
+  done
 
-  if claude auth status >/dev/null 2>&1; then
-    info "Anthropic auth verified."
+  # Save token to auth-profiles.json
+  if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
+    info "Saving Anthropic token to auth-profiles..."
+    save_auth_token "$captured_token"
+    info "Anthropic auth configured."
   else
-    warn "Auth not verified. Run 'claude setup-token' later."
+    warn "No valid token. Agent won't work until you run 'claude setup-token' and save the token."
+    warn "After getting the token, run:"
+    warn "  openclaw auth add --provider anthropic --token <your-token>"
   fi
 }
 
@@ -556,8 +583,12 @@ PYEOF
 
   # Build monitor cron
   local monitor="$dest/scripts/build_monitor.sh"
-  if [ -f "$monitor" ]; then
+  if [ -f "$monitor" ] && command -v crontab >/dev/null 2>&1; then
     chmod +x "$monitor"
+    # Start cron daemon if not running (containers)
+    if [ "$(detect_os)" = "linux" ]; then
+      service cron start 2>/dev/null || cron 2>/dev/null || true
+    fi
     local cron_line="*/5 * * * * OPENCLAW_HOME=$OPENCLAW_HOME $monitor >/dev/null 2>&1"
     if ! crontab -l 2>/dev/null | grep -q "build_monitor.sh"; then
       (crontab -l 2>/dev/null || true; echo "$cron_line") | crontab -
