@@ -321,17 +321,22 @@ print(d.get("oauthToken",""))
     echo "  └─────────────────────────────────────────────────────────┘"
     echo ""
     read -r -t 0.1 -n 10000 </dev/tty 2>/dev/null || true
-    # Read multiple lines until empty line, concatenate
+    # Read multiple lines (masked) until empty line, concatenate
     local token_lines="" line=""
     printf "  Token> " >/dev/tty
-    while IFS= read -r line </dev/tty; do
-      [ -z "$line" ] && break
+    while IFS= read -r -s line </dev/tty; do
+      if [ -z "$line" ]; then
+        echo "" >/dev/tty
+        break
+      fi
+      local masked="$(printf '%*s' ${#line} '' | tr ' ' '*')${line: -4}"
+      echo " $masked" >/dev/tty
       token_lines="${token_lines}${line}"
       printf "       > " >/dev/tty
     done
     captured_token="$(echo "$token_lines" | tr -d '\r\n ' | sed 's/^export //' | sed 's/^CLAUDE_CODE_OAUTH_TOKEN=//')"
     if echo "$captured_token" | grep -qE '^sk-ant-oat[A-Za-z0-9._-]+$'; then
-      echo "  ✓ Token captured (${#captured_token} chars)"
+      echo "  ✓ Token captured (${#captured_token} chars, ends with ...${captured_token: -6})"
     fi
   done
 
