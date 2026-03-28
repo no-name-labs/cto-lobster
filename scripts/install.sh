@@ -52,10 +52,10 @@ prompt_value() {
   fi
   local entered=""
   if [ "$optional" = "true" ]; then
-    read -r -p "$prompt_text (optional, press Enter to skip): " entered
+    read -r -p "$prompt_text (optional, press Enter to skip): " entered </dev/tty
   else
     while [ -z "$entered" ]; do
-      read -r -p "$prompt_text: " entered
+      read -r -p "$prompt_text: " entered </dev/tty
     done
   fi
   printf -v "$var_name" "%s" "$entered"
@@ -71,9 +71,14 @@ prompt_secret() {
   fi
   local entered=""
   while [ -z "$entered" ]; do
-    read -r -s -p "$prompt_text: " entered; echo
+    read -r -s -p "$prompt_text: " entered </dev/tty; echo
   done
   printf -v "$var_name" "%s" "$entered"
+}
+
+wait_for_user() {
+  if [ "$NON_INTERACTIVE" = "true" ]; then return 0; fi
+  read -r -p "$1" </dev/tty
 }
 
 run_root() {
@@ -181,14 +186,14 @@ setup_anthropic_auth() {
 
   echo ""
   echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  Anthropic OAuth Login Required                         ║"
+  echo "║  Anthropic OAuth Login                                  ║"
   echo "║                                                         ║"
-  echo "║  Run this command and follow the browser prompt:        ║"
+  echo "║  You need an Anthropic account with Claude Opus access. ║"
+  echo "║  The login will show a URL — open it in a browser,     ║"
+  echo "║  sign in, and paste the code back here.                 ║"
   echo "║                                                         ║"
-  echo "║    claude auth login                                    ║"
-  echo "║                                                         ║"
-  echo "║  This authenticates Claude Code with your Anthropic     ║"
-  echo "║  account (Opus model access required).                  ║"
+  echo "║  For headless servers: copy the URL to your local       ║"
+  echo "║  browser, complete login, paste the code back.          ║"
   echo "╚══════════════════════════════════════════════════════════╝"
   echo ""
 
@@ -197,13 +202,17 @@ setup_anthropic_auth() {
     return 0
   fi
 
-  read -r -p "Press Enter after completing 'claude auth login' in another terminal... "
+  wait_for_user "Press Enter to start Anthropic login... "
+
+  # Run claude auth login interactively
+  claude auth login </dev/tty >/dev/tty 2>&1 || true
 
   # Verify
-  if ! claude auth status >/dev/null 2>&1; then
-    warn "Claude auth not detected. CTO will fall back to Sonnet if Opus fails."
-  else
+  if claude auth status >/dev/null 2>&1; then
     info "Anthropic OAuth verified."
+  else
+    warn "Claude auth not detected. You can retry later with: claude auth login"
+    wait_for_user "Press Enter to continue anyway... "
   fi
 }
 
@@ -292,18 +301,38 @@ PYEOF
 setup_telegram() {
   info "Setting up Telegram..."
 
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════╗"
+  echo "║  Telegram Setup                                         ║"
+  echo "║                                                         ║"
+  echo "║  CTO communicates via a Telegram group with topics.     ║"
+  echo "║  You need:                                              ║"
+  echo "║                                                         ║"
+  echo "║  1. Bot Token — create via @BotFather in Telegram:     ║"
+  echo "║     /newbot → pick name → copy the token               ║"
+  echo "║     Then add the bot to your group as admin.            ║"
+  echo "║                                                         ║"
+  echo "║  2. Group ID — add @raw_data_bot to your group,        ║"
+  echo "║     send any message, it replies with the group ID      ║"
+  echo "║     (starts with -100...). Then remove the bot.         ║"
+  echo "║                                                         ║"
+  echo "║  3. Topic ID — create a topic in the group (e.g.       ║"
+  echo "║     \"CTO Factory\"), open it, the URL contains the ID: ║"
+  echo "║     t.me/c/XXXXXXXXX/<TOPIC_ID>                        ║"
+  echo "║                                                         ║"
+  echo "║  4. Your user ID — send /start to @userinfobot         ║"
+  echo "║     It will reply with your numeric user ID.            ║"
+  echo "╚══════════════════════════════════════════════════════════╝"
+  echo ""
+
   prompt_secret TELEGRAM_BOT_TOKEN "Telegram Bot Token (from @BotFather)"
   upsert_env "$OPENCLAW_HOME/.env" "TELEGRAM_BOT_TOKEN" "$TELEGRAM_BOT_TOKEN"
 
   prompt_value TELEGRAM_GROUP_ID "Telegram Group ID (e.g. -100XXXXXXXXXX)"
-  prompt_value TELEGRAM_TOPIC_ID "Telegram Topic ID for CTO agent" "true"
+  prompt_value TELEGRAM_TOPIC_ID "Telegram Topic ID for CTO"
+  prompt_value TELEGRAM_ALLOWED_USERS "Your Telegram user ID (for allowlist)"
 
-  if [ -n "$TELEGRAM_ALLOWED_USERS" ]; then
-    local users_json="$TELEGRAM_ALLOWED_USERS"
-  else
-    prompt_value TELEGRAM_ALLOWED_USERS "Your Telegram user ID (for allowlist)" "true"
-    local users_json="$TELEGRAM_ALLOWED_USERS"
-  fi
+  local users_json="$TELEGRAM_ALLOWED_USERS"
 
   # Update config with Telegram
   python3 - "$OPENCLAW_HOME/openclaw.json" "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_GROUP_ID" "$TELEGRAM_TOPIC_ID" "$users_json" << 'PYEOF'
