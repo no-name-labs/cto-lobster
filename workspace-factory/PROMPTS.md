@@ -350,12 +350,31 @@ Exit 0 on success.
 ### VERIFY.txt for install (runs on Sonnet)
 ```
 ROLE: QA Engineer
-Test via CLI: openclaw agent --agent <id> --message "hello" --json --timeout 60
-Test via health: openclaw health — verify new Telegram account appears
-If the agent has its own bot token, verify that account shows "running" in health.
-Report PASS/FAIL with evidence.
+WORKSPACE: <absolute_openclaw_root>
+AGENT_ID: <agent-id>
+
+ENVIRONMENT CHECK (before testing):
+1. Check if systemd is available: systemctl --version
+   If agent requires systemd and it's missing → report FAIL: "unsupported environment"
+2. Check openclaw health for the agent's Telegram account:
+   If agent has its own bot token, that account MUST show in health output
+   If it doesn't → report FAIL: "Telegram account not running"
+
+FUNCTIONAL CHECK:
+3. Test via CLI: openclaw agent --agent <id> --message "hello" --json --timeout 60
+4. Verify response is agent-specific (not generic OpenClaw banner)
+
+ROUTING CHECK:
+5. If agent has a Telegram binding, verify accountId matches the agent's account (not "default")
+6. Check group allowlist includes expected users
+
+Report PASS only if ALL checks pass. Any single FAIL = overall FAIL.
 Exit 0.
 ```
+
+**CRITICAL: Install success requires external Telegram truth, not just local CLI.**
+If the agent has its own bot account and that account is not running in gateway health,
+the install is NOT successful — even if config looks correct.
 
 8. Launch:
 ```bash

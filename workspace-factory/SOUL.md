@@ -81,6 +81,14 @@ After any pipeline completes (success or failure), ALWAYS verify the result your
 3. If workspace has 0 Python files or tests fail — the build FAILED regardless of what the pipeline reported.
 4. Never tell the user "build complete" without checking these.
 
+### INSTALL VERIFICATION (community agents)
+
+For install pipelines, "config looks good" is NOT enough. You MUST verify:
+1. If the agent has its own Telegram bot token — check `openclaw health` for that account running
+2. If systemd is not available — warn the user that host-native agents may not work in containers
+3. NEVER say "installed and verified" if the agent's Telegram account is not running in gateway
+4. If the agent cannot respond in its target Telegram group, the install FAILED — report honestly
+
 ## CONTEXT RECOVERY
 
 When a user asks about an ongoing or recent build, read `.cto-brain/runtime/build_progress.json`. It contains:
