@@ -7,14 +7,24 @@ An [OpenClaw](https://openclaw.ai) agent that builds other OpenClaw agents. You 
 ## How It Works
 
 ```
-You (Telegram) → CTO (intake, prompts) → Lobster Pipeline → Code Agent (Claude/Codex)
+You (Telegram) → CTO (intake, prompts) → Lobster Pipeline → Claude Code (implementation)
                                                ↓
                                   🔬 Research → 🏗️ Build → 🧪 Test → 📋 Register → ✅ Verify → 🎉 Live
 ```
 
-CTO is an **orchestrator** — it does not write code itself. It writes task prompts with specific roles (Architect, Developer, QA Engineer, Auditor) and launches a deterministic [Lobster](https://github.com/openclaw/lobster) pipeline that handles everything.
+CTO is an **orchestrator** powered by **Anthropic Claude Opus**. It does not write code itself — it writes task prompts with specific roles (Researcher, Architect, Developer, QA Engineer, Auditor) and launches a deterministic [Lobster](https://github.com/openclaw/lobster) pipeline. Each pipeline step runs **Claude Code** (via Claude Sonnet/Opus) to do the actual implementation.
 
 You get Telegram notifications at every stage so you always know what's happening.
+
+### Technology Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Orchestrator (CTO) | Anthropic Claude Opus 4.6 |
+| Code Agent | Claude Code CLI (Sonnet 4.6 / Opus 4.6) |
+| Pipeline | [Lobster](https://github.com/openclaw/lobster) (deterministic YAML workflows) |
+| Runtime | [OpenClaw](https://openclaw.ai) (agent gateway + Telegram integration) |
+| Authentication | Anthropic OAuth (setup-token) |
 
 ## Quick Install
 
@@ -58,9 +68,15 @@ cd cto-lobster
 ## Prerequisites
 
 - **Ubuntu 22.04+** or **macOS 13+**
-- **Anthropic account** with Opus access (for Claude Code OAuth)
+- **Anthropic account** with Claude Pro/Max subscription (for Claude Code OAuth)
 - **Telegram bot** created via [@BotFather](https://t.me/BotFather)
-- **Telegram group** with a topic for CTO
+- **Telegram group with Topics enabled** — recommended setup:
+  1. Create a Telegram group (or use existing)
+  2. Enable **Topics** in group settings
+  3. Create a topic for CTO (e.g. "CTO Factory")
+  4. **Add your OpenClaw Telegram bot** to the group
+  5. **Promote the bot to admin** with at minimum: _Send Messages_, _Manage Topics_
+  6. Copy the topic link (e.g. `https://t.me/c/1234567890/42`) — the installer will parse it automatically
 
 ## Usage
 
@@ -192,7 +208,7 @@ workspace-factory/
 ├── lobster/             # Pipeline definitions
 ├── scripts/
 │   ├── launch_build.py          # Pipeline launcher (self-daemonizing)
-│   ├── code_agent_exec.py       # Claude/Codex wrapper with retry
+│   ├── code_agent_exec.py       # Claude Code CLI wrapper with retry
 │   └── lobster_register_agent.py # Agent registration + Telegram binding
 ├── skills/              # Skill definitions
 └── docs/                # Reference documentation
@@ -216,11 +232,14 @@ workspace-factory/
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | Yes |
 | `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token (auto-generated) | Auto |
 | `OPENCLAW_PORT` | Gateway port (default: 18789) | No |
-| `OPENCLAW_CODE_AGENT_CLI` | Code agent: `claude` or `codex` (default: `claude`) | No |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Anthropic OAuth token (from `claude setup-token`) | Yes |
+| `OPENCLAW_CODE_AGENT_CLI` | Code agent CLI (default: `claude`) | No |
 
 ### Model
 
-CTO runs on `anthropic/claude-opus-4-6` with `claude-sonnet-4-6` as fallback. Code agents use `claude-sonnet-4-6` by default.
+CTO runs on **Anthropic Claude Opus 4.6** with Claude Sonnet 4.6 as fallback. Pipeline code agents use **Claude Sonnet 4.6** by default (Opus for architecture and audit steps).
+
+All models are Anthropic-only. The installer restricts the model allowlist to Anthropic provider.
 
 To change: edit `model.primary` in `openclaw.json` for the `cto-factory` agent.
 
