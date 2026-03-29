@@ -118,7 +118,7 @@ def build_cmd(args: argparse.Namespace) -> list[str]:
             "claude",
             "-p",  # prompt mode — agent with tool use (creates files, runs commands)
             "--output-format", "text",
-            "--dangerously-skip-permissions",
+            "--allowedTools", "Write,Edit,Read,Bash,MultiEdit,NotebookEdit,WebSearch,WebFetch",
             "--model", args.model,
         ]
         # claude -p reads prompt from stdin, executes tools, writes files
