@@ -335,6 +335,19 @@ steps:
         exit 1
       '
 
+  # ── CRON DELIVERY VALIDATION ────────────────────────────────
+  # If T08 created a cron, verify delivery.to has :topic: — delete if wrong
+  - id: validate_cron_delivery
+    command: >
+      bash -c '
+        RESULT=$(python3 "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/validate_cron_delivery.py" "$LOBSTER_ARG_AGENT_ID" 2>/dev/null || echo "{}")
+        if echo "$RESULT" | grep -q "deleted"; then
+          CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ Cron with wrong delivery target deleted (was sending to group, not topic). Agent may need cron re-created with correct --to flag." --json 2>/dev/null || true
+        fi
+        echo "$RESULT"
+      '
+
   # ── DONE → notify + CTO final report ────────────────────────
   - id: callback_cto
     command: >

@@ -11,12 +11,18 @@ Verify EVERY requirement from the sign-off is implemented, tested, and working i
 
 ## OpenClaw Knowledge
 - Test agent: `openclaw agent --agent <id> --message "<cmd>" --json --timeout 60`
-- Create cron WITH delivery: `openclaw cron create --agent <id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --announce --channel telegram --to "<chat_id>" --best-effort-deliver`
+- Create cron WITH delivery to a TOPIC:
+  ```
+  openclaw cron create --agent <id> --cron "<schedule>" --tz UTC --name "<name>" --message "<payload>" --exact --announce --channel telegram --to "<group_id>:topic:<topic_id>" --best-effort-deliver
+  ```
+  - The `--to` value MUST be `"<group_id>:topic:<topic_id>"` — NOT just `"<group_id>"`!
+  - CORRECT: `--to "-1003633569118:topic:1654"` → delivers to topic 1654
+  - WRONG:   `--to "-1003633569118"` → delivers to group general chat (nobody sees it!)
+  - Get the exact `--to` value from the agent's binding in openclaw.json (`bindings[].match.peer.id`)
   - `--announce` = deliver agent response to a chat
-  - `--channel telegram` = delivery via Telegram
-  - `--to "<chat_id>"` = Telegram chat/topic target (e.g. "-1003633569118:topic:1654")
   - `--best-effort-deliver` = don't fail the job if delivery fails
-  - WITHOUT `--announce` and `--to`, cron runs the agent but nobody sees the output!
+  - WITHOUT `--announce` and `--to`, cron runs but output goes nowhere!
+- After creating cron, VERIFY delivery target: `openclaw cron list --json` and check that `delivery.to` contains `:topic:`
 - List cron: `openclaw cron list --json`
 - Delete cron: `openclaw cron delete <id>`
 - Enable/disable cron: `openclaw cron enable <id>` / `openclaw cron disable <id>`
