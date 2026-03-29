@@ -320,23 +320,40 @@ MISSION: Install a community agent from a cloned GitHub repo.
 
 REPO: cloned to /tmp/<agent-id>-install-repo
 OPENCLAW_ROOT: <absolute_path>
+AGENT_ID: <agent-id>
+BOT_TOKEN: <bot_token_value>
+GROUP_ID: <telegram_group_id>
+TOPIC_ID: <telegram_topic_id>
+ALLOWED_USERS: <comma_separated_user_ids>
 
 STEPS:
 1. cd /tmp/<agent-id>-install-repo
 2. Run installer: ./scripts/install.sh --non-interactive [flags from README]
 3. Verify: openclaw config validate --json
 4. Run self-check if available
-5. Report result
 
-Do NOT modify openclaw.json manually — the installer handles it.
+POST-INSTALL FIXUP (mandatory — installers often leave incomplete state):
+5. Check openclaw.json for the new agent's Telegram account entry:
+   - If botToken is an env reference like ${VAR}, replace with the REAL token value
+   - If groupPolicy is missing, set to "open" or "allowlist" with user IDs
+6. Merge any agent-specific secrets into OPENCLAW_ROOT/.env:
+   - Read the agent's .env file if created
+   - Append missing vars to the main .env (not create a separate file)
+7. Check group allowFrom in channels.telegram.groups:
+   - If allowFrom is empty, add the ALLOWED_USERS
+8. Verify gateway sees the new account: openclaw health
+9. Report result
+
 Exit 0 on success.
 ```
 
 ### VERIFY.txt for install (runs on Sonnet)
 ```
 ROLE: QA Engineer
-Test: openclaw agent --agent <id> --message "hello" --json --timeout 60
-Verify agent responds. Report PASS/FAIL.
+Test via CLI: openclaw agent --agent <id> --message "hello" --json --timeout 60
+Test via health: openclaw health — verify new Telegram account appears
+If the agent has its own bot token, verify that account shows "running" in health.
+Report PASS/FAIL with evidence.
 Exit 0.
 ```
 

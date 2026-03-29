@@ -160,6 +160,21 @@ steps:
         exit 1
       '
 
+  # ── POST-INSTALL HEALTH CHECK ──────────────────────────────
+  # Verify new agent's Telegram account is actually running
+  - id: post_install_health
+    command: >
+      bash -c '
+        CTO_TARGET=$(bash "$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/scripts/resolve_cto_topic.sh" "$LOBSTER_ARG_OPENCLAW_ROOT")
+        HEALTH=$(openclaw health 2>&1 || true)
+        if echo "$HEALTH" | grep -qi "$LOBSTER_ARG_AGENT_ID"; then
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "✅ Health check: $LOBSTER_ARG_AGENT_ID visible in gateway" --json 2>/dev/null || true
+        else
+          [ -n "$CTO_TARGET" ] && openclaw message send --channel telegram --target "$CTO_TARGET" -m "⚠️ Health check: $LOBSTER_ARG_AGENT_ID NOT visible in gateway health. Agent may need manual config fix." --json 2>/dev/null || true
+        fi
+        echo "{\"ok\":true}"
+      '
+
   # ── VERIFY (optional, code agent runs post-install checks) ─
   - id: verify
     command: >
