@@ -337,6 +337,30 @@ def main():
             print(json.dumps({"ok": False, "error": "BLOCKED: INSTALL.txt required for install pipeline."}))
             return 1
 
+    # ── TOPIC GUARD ──────────────────────────────────────────
+    # Block non-CTO agents from binding to CTO's own topic.
+    # CTO sometimes passes its own topic_id instead of the agent's target topic.
+    if args.action in ("create", "edit", "install") and args.agent_id != "cto-factory":
+        cto_topic = ""
+        try:
+            import subprocess as _sp
+            cto_topic = _sp.run(
+                ["bash", f"{factory}/scripts/resolve_cto_topic.sh", root],
+                capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+        except Exception:
+            pass
+        if cto_topic and args.topic_id:
+            cto_topic_id = cto_topic.split(":topic:")[-1] if ":topic:" in cto_topic else ""
+            if cto_topic_id and args.topic_id == cto_topic_id:
+                print(json.dumps({
+                    "ok": False,
+                    "error": f"BLOCKED: topic_id={args.topic_id} is the CTO topic. "
+                             f"Agent {args.agent_id} must bind to a different topic. "
+                             f"CTO topic is for orchestration, not agent delivery.",
+                }))
+                return 1
+
     # Build lobster command
     if args.action == "create":
         lobster_file = f"{factory}/lobster/create-agent.lobster"
@@ -400,9 +424,35 @@ def main():
     log_dir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── STALE LOCK REAP ────────────────────────────────────────
+    # If lock file is older than 30 min and no pipeline processes alive, remove it.
+    lock_file = log_dir / "build.lock"
+    if lock_file.exists() and not is_background:
+        try:
+            lock_age = time.time() - lock_file.stat().st_mtime
+            if lock_age > 1800:  # 30 minutes
+                # Check if any pipeline process is actually alive
+                import subprocess as _sp
+                ps_out = _sp.run(["ps", "aux"], capture_output=True, text=True, timeout=5).stdout
+                if "lobster" not in ps_out and "code_agent_exec" not in ps_out:
+                    lock_file.unlink(missing_ok=True)
+                    # Also fix stale progress file
+                    progress_file = log_dir / "build_progress.json"
+                    if progress_file.exists():
+                        try:
+                            pdata = json.loads(progress_file.read_text())
+                            if pdata.get("status") == "running":
+                                pdata["status"] = "failed"
+                                pdata["error"] = "stale: reaped after 30min with no alive processes"
+                                progress_file.write_text(json.dumps(pdata, indent=2))
+                        except Exception:
+                            pass
+                    log("Reaped stale lock + progress (age: {:.0f}s)".format(lock_age))
+        except Exception:
+            pass
+
     # ── DEDUP GUARD (atomic lockfile) ────────────────────────────
     # Prevent double-launch using OS-level exclusive file lock.
-    # Progress-file check was too slow — CTO can call twice before first write.
     lock_file = log_dir / "build.lock"
     if args.agent_id and not is_background:
         try:
@@ -412,11 +462,21 @@ def main():
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except (BlockingIOError, OSError):
                 os.close(lock_fd)
+                # Read who holds the lock
+                lock_holder = ""
+                try:
+                    lock_holder = lock_file.read_text().strip()
+                except Exception:
+                    pass
                 print(json.dumps({
                     "ok": False,
                     "blocked": True,
                     "reason": "build_already_running",
                     "agent_id": args.agent_id,
+                    "lock_holder": lock_holder,
+                    "hint": f"Another pipeline is running ({lock_holder}). "
+                            f"Wait for it to finish, or if it's stale (>30min), "
+                            f"delete {lock_file} manually.",
                 }))
                 return 1
             # Write agent_id + timestamp to lock file
@@ -465,6 +525,13 @@ def main():
 
     # ── BACKGROUND MODE — run pipeline directly ──────────────
 
+    def _cleanup_lock():
+        """Release lock file on any exit — prevents stale lock poisoning."""
+        try:
+            lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     # Acquire lock for the duration of the pipeline
     _lock_fd = None
     try:
@@ -508,6 +575,7 @@ def main():
         progress["status"] = "failed"
         progress["error"] = "lobster CLI not found"
         write_progress(root, progress)
+        _cleanup_lock()
         return 1
 
     # Monitor loop
@@ -525,7 +593,7 @@ def main():
         if current_step and current_step != last_step:
             label = STEP_LABELS.get(current_step, f"📋 {current_step}")
             log(f"{label} started ({elapsed}s)")
-            notify(notify_chat, notify_topic, f"{label} started... ({elapsed}s elapsed)")
+            # Lobster already sends ⏳/✅ per step — no duplicate notify here
 
             # Report completion of previous step
             if last_step:
@@ -579,6 +647,7 @@ def main():
                 lock_f.unlink(missing_ok=True)
             except Exception:
                 pass
+            _cleanup_lock()
             return 124
 
         time.sleep(5)
@@ -601,6 +670,7 @@ def main():
         # Send CTO callback so it proactively reports to user
         notify(notify_chat, notify_topic, f"❌ Pipeline failed: {args.agent_id or "unknown"} | {error_detail[:200]}")
         print(json.dumps({"ok": False, "exit_code": proc.returncode, "elapsed": elapsed, "error": error_detail}))
+        _cleanup_lock()
         return proc.returncode
 
     # Parse lobster JSON output
@@ -616,6 +686,7 @@ def main():
         # Lobster callback_cto already sends BUILD_COMPLETE + CTO --deliver report
         # No duplicate notify here
         print(json.dumps({"ok": True, "status": "completed", "elapsed": elapsed}))
+        _cleanup_lock()
         return 0
 
     if result.get("ok"):
@@ -653,6 +724,7 @@ def main():
         write_progress(root, progress)
         notify(notify_chat, notify_topic, f"❌ Pipeline failed: {args.agent_id or "unknown"} | {error[:200]}")
         print(json.dumps({"ok": False, "error": error, "elapsed": elapsed}, indent=2))
+        _cleanup_lock()
         return 1
 
     # Cleanup lockfile on any successful exit
@@ -661,6 +733,7 @@ def main():
         lock_f.unlink(missing_ok=True)
     except Exception:
         pass
+    _cleanup_lock()
     return 0
 
 
