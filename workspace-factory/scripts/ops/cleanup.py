@@ -46,14 +46,47 @@ def main():
     bindings = d.get("bindings", [])
     changed = False
 
-    # 1. Orphan bindings — binding for agent that doesn't exist
+    # 1a. Orphan bindings — binding for agent that doesn't exist
     orphan_bindings = [b for b in bindings if b.get("agentId") not in agents]
     if orphan_bindings:
         for ob in orphan_bindings:
             fixes.append(f"remove orphan binding: {ob.get('agentId')} -> {ob.get('match', {}).get('peer', {}).get('id', '?')}")
         if not dry_run:
             d["bindings"] = [b for b in bindings if b.get("agentId") in agents]
+            bindings = d["bindings"]
             changed = True
+
+    # 1b. CTO-topic hijack — non-CTO agents bound to CTO's topic
+    cto_peer = ""
+    # Try resolve_cto_topic.sh first
+    try:
+        resolve_script = pathlib.Path(f"{home}/workspace-factory/scripts/resolve_cto_topic.sh")
+        if resolve_script.exists():
+            result = subprocess.run(
+                ["bash", str(resolve_script), home],
+                capture_output=True, text=True, timeout=5
+            )
+            cto_peer = result.stdout.strip()
+    except Exception:
+        pass
+    # Fallback: check CTO binding directly
+    if not cto_peer:
+        for b in d.get("bindings", []):
+            if b.get("agentId") == "cto-factory":
+                cto_peer = b.get("match", {}).get("peer", {}).get("id", "")
+                break
+    if cto_peer:
+        bad_bindings = [
+            b for b in d.get("bindings", [])
+            if b.get("agentId") != "cto-factory"
+            and b.get("match", {}).get("peer", {}).get("id") == cto_peer
+        ]
+        if bad_bindings:
+            for bb in bad_bindings:
+                fixes.append(f"remove CTO-topic hijack: {bb.get('agentId')} bound to CTO peer {cto_peer}")
+            if not dry_run:
+                d["bindings"] = [b for b in d["bindings"] if b not in bad_bindings]
+                changed = True
 
     # 2. Orphan crons — cron for agent that doesn't exist
     try:
@@ -98,12 +131,16 @@ def main():
             if not dry_run:
                 lock_path.unlink(missing_ok=True)
 
-    # 4. Stale progress
+    # 4. Stale progress — fix inconsistent state
     progress_path = pathlib.Path(f"{home}/workspace-factory/.cto-brain/runtime/build_progress.json")
     if progress_path.exists():
         try:
             pdata = json.loads(progress_path.read_text())
-            if pdata.get("status") == "running":
+            status = pdata.get("status", "")
+            step = pdata.get("current_step", "")
+
+            # 4a. status=running but no processes alive
+            if status == "running":
                 try:
                     ps = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5).stdout
                     alive = "lobster" in ps or "code_agent_exec" in ps
@@ -116,6 +153,15 @@ def main():
                         pdata["current_step"] = "failed"
                         pdata["error"] = "stale: cleaned by cleanup.py"
                         progress_path.write_text(json.dumps(pdata, indent=2))
+
+            # 4b. status=completed/failed but current_step still "launching"
+            # This is inconsistent — fix current_step to match status
+            elif status in ("completed", "failed") and step == "launching":
+                target_step = "done" if status == "completed" else "failed"
+                fixes.append(f"fix inconsistent progress: status={status} but current_step=launching -> {target_step}")
+                if not dry_run:
+                    pdata["current_step"] = target_step
+                    progress_path.write_text(json.dumps(pdata, indent=2))
         except Exception:
             pass
 

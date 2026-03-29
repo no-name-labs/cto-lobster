@@ -81,9 +81,11 @@ def main():
     root = config_path.parent
     ws_path = pathlib.Path(workspace)
     dst = ws_path / "auth-profiles.json"
-    # Search order: CTO agent (most likely to have OAuth), then main, then root
+    # Search order: CTO workspace (install.sh saves here), then agents dirs, then root
     candidates = [
+        root / "workspace-factory" / "auth-profiles.json",
         root / "agents" / "cto-factory" / "agent" / "auth-profiles.json",
+        root / "agents" / "main" / "agent" / "auth-profiles.json",
         root / "agents" / "main" / "auth-profiles.json",
         root / "auth-profiles.json",
     ]
