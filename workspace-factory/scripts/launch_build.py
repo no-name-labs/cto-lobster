@@ -565,9 +565,20 @@ def main():
         # Timeout check
         if elapsed > args.timeout:
             proc.kill()
+            proc.wait()
             msg = f"⏰ TIMEOUT: Pipeline killed after {args.timeout}s"
             log(msg)
             notify(notify_chat, notify_topic, msg)
+            progress["status"] = "failed"
+            progress["error"] = f"timeout after {args.timeout}s"
+            progress["elapsed_seconds"] = elapsed
+            write_progress(root, progress)
+            # Release lockfile
+            try:
+                lock_f = log_dir / "build.lock"
+                lock_f.unlink(missing_ok=True)
+            except Exception:
+                pass
             return 124
 
         time.sleep(5)
@@ -644,6 +655,12 @@ def main():
         print(json.dumps({"ok": False, "error": error, "elapsed": elapsed}, indent=2))
         return 1
 
+    # Cleanup lockfile on any successful exit
+    try:
+        lock_f = log_dir / "build.lock"
+        lock_f.unlink(missing_ok=True)
+    except Exception:
+        pass
     return 0
 
 

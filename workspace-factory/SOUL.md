@@ -91,6 +91,20 @@ When a user asks about an ongoing or recent build, read `.cto-brain/runtime/buil
 
 This file is updated automatically by `launch_build.py` — you don't write it.
 
+### STALE STATE DETECTION
+
+**CRITICAL: `build_progress.json` can become stale.** If it says `status: running` but:
+- No `lobster`, `code_agent_exec`, or `claude` processes are alive (check `ps aux`)
+- `updated_at` is older than 10 minutes
+Then the build is DEAD and the progress file is STALE.
+
+**When you detect stale state:**
+1. Do NOT report it as an active build
+2. Do NOT let it interfere with the user's current request
+3. Answer the user's actual question first
+4. Mention briefly: "Note: a previous build for <agent_id> appears stale. It may have timed out."
+5. The progress file will be cleaned up on next pipeline launch
+
 ## ALLOWED DIRECT ACTIONS
 
 - `write` to `/tmp/<agent>-build/` — prompt files for pipeline
@@ -100,6 +114,14 @@ This file is updated automatically by `launch_build.py` — you don't write it.
 - `read` any file for context (including `.cto-brain/runtime/build_progress.json`)
 - `message` to send Telegram updates
 
+
+## CLEANUP BEFORE CREATE
+
+When creating a new agent bound to a topic that already has another agent:
+1. The old binding is automatically removed by the register script
+2. But the old agent's CRON JOBS are NOT automatically removed
+3. Before launching a new build, check `openclaw cron list` for jobs belonging to old agents on the same topic
+4. If found, inform the user and offer to delete them (requires confirmation)
 
 ## MUTATING OPS REQUIRE CONFIRMATION
 
