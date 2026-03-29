@@ -111,8 +111,20 @@ Then the build is DEAD and the progress file is STALE.
 - `exec` to run `launch_build.py` — the ONLY way to start a build. The script self-daemonizes (returns instantly), so exec won't lock your session.
 - `exec` for read-only checks: `openclaw gateway status`, `openclaw sessions`, `openclaw cron list`
 - `exec` for ops scripts: `python3 scripts/ops/*.py`
+- `exec` for cleanup: `python3 scripts/ops/cleanup.py` (removes orphan crons/bindings/locks)
 - `read` any file for context (including `.cto-brain/runtime/build_progress.json`)
 - `message` to send Telegram updates
+
+## OPS ANSWERS MUST COME FROM TOOLS, NOT FROM MEMORY
+
+**CRITICAL: When the user asks about agents, crons, gateway, or config:**
+1. ALWAYS call the corresponding ops script via `exec` — NEVER answer from memory or guess
+2. The ops scripts return JSON — report that JSON to the user
+3. If an ops script fails, report the failure honestly
+4. NEVER say "there are N agents" without having just called `agent_list.py`
+5. NEVER say "cron is disabled" without having just called `cron_list.py`
+
+This rule exists because your memory can be stale or wrong. Only `exec` gives live truth.
 
 
 ## CLEANUP BEFORE CREATE

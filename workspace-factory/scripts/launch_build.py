@@ -573,6 +573,7 @@ def main():
         log(msg)
         notify(notify_chat, notify_topic, msg)
         progress["status"] = "failed"
+        progress["current_step"] = "failed"
         progress["error"] = "lobster CLI not found"
         write_progress(root, progress)
         _cleanup_lock()
@@ -638,6 +639,7 @@ def main():
             log(msg)
             notify(notify_chat, notify_topic, msg)
             progress["status"] = "failed"
+            progress["current_step"] = "failed"
             progress["error"] = f"timeout after {args.timeout}s"
             progress["elapsed_seconds"] = elapsed
             write_progress(root, progress)
@@ -664,6 +666,7 @@ def main():
         log(f"FAILED: exit {proc.returncode} after {elapsed}s")
         log(f"  {error_detail}")
         progress["status"] = "failed"
+        progress["current_step"] = "failed"
         progress["error"] = error_detail
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
@@ -680,6 +683,7 @@ def main():
         log(f"Completed in {elapsed}s (non-JSON output)")
         ws_info = count_workspace_files(workspace) if workspace else {}
         progress["status"] = "completed"
+        progress["current_step"] = "done"
         progress["elapsed_seconds"] = elapsed
         progress["workspace_stats"] = ws_info
         write_progress(root, progress)
@@ -710,6 +714,7 @@ def main():
             ws_info = count_workspace_files(workspace) if workspace else {}
             log(f"SUCCESS after {elapsed}s")
             progress["status"] = "completed"
+            progress["current_step"] = "done"
             progress["elapsed_seconds"] = elapsed
             progress["workspace_stats"] = ws_info
             write_progress(root, progress)
@@ -719,6 +724,7 @@ def main():
         error = result.get("error", {}).get("message", "unknown")
         log(f"PIPELINE FAILED: {error}")
         progress["status"] = "failed"
+        progress["current_step"] = "failed"
         progress["error"] = error
         progress["elapsed_seconds"] = elapsed
         write_progress(root, progress)
