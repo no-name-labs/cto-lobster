@@ -61,12 +61,39 @@ PROGRESS_SCHEMA = {
 
 
 def write_progress(root: str, progress: dict):
-    """Write progress file so CTO can read it to restore context."""
+    """Write progress file. Merges with existing data to preserve lobster-owned fields.
+
+    Ownership:
+      - lobster owns: current_step, completed_steps (written by create-agent.lobster)
+      - launch_build owns: status, elapsed_seconds, error, workspace_stats, terminal states
+    """
     progress["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     pdir = Path(root) / "workspace-factory" / ".cto-brain" / "runtime"
     pdir.mkdir(parents=True, exist_ok=True)
     pfile = pdir / "build_progress.json"
     try:
+        # Read existing to preserve lobster-owned step fields
+        existing = {}
+        if pfile.exists():
+            try:
+                existing = json.loads(pfile.read_text())
+            except Exception:
+                existing = {}
+
+        # Lobster-owned fields: only overwrite if we have real values (not defaults)
+        lobster_fields = ("current_step", "completed_steps")
+        for field in lobster_fields:
+            if field in existing and field in progress:
+                our_val = progress[field]
+                their_val = existing[field]
+                # Keep lobster's value unless we're setting a terminal state
+                if progress.get("status") in ("completed", "failed"):
+                    pass  # Terminal — our value wins (done/failed)
+                elif our_val == "launching" and their_val != "launching":
+                    progress[field] = their_val  # Don't regress from lobster's step
+                elif our_val == [] and their_val:
+                    progress[field] = their_val  # Don't clear lobster's list
+
         pfile.write_text(json.dumps(progress, indent=2))
     except Exception:
         pass

@@ -78,6 +78,17 @@ steps:
           if [ -n "$CTO_TARGET" ]; then
             openclaw message send --channel telegram --target "$CTO_TARGET" -m "⏳ [$STEP_NUM/$TOTAL] Starting $FNAME..." --json 2>/dev/null || true
           fi
+          # ── Update progress file (lobster-owned: current_step) ──
+          PROGRESS_FILE="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/.cto-brain/runtime/build_progress.json"
+          if [ -f "$PROGRESS_FILE" ]; then
+            python3 -c "
+import json, sys
+p = json.load(open('$PROGRESS_FILE'))
+p['current_step'] = '$FNAME'
+p['updated_at'] = __import__('time').strftime('%Y-%m-%dT%H:%M:%SZ', __import__('time').gmtime())
+open('$PROGRESS_FILE', 'w').write(json.dumps(p, indent=2))
+" 2>/dev/null || true
+          fi
           # ── Inject identity + build context ──
           TMPF=$(mktemp)
           IDDIR="$LOBSTER_ARG_OPENCLAW_ROOT/workspace-factory/identities"
@@ -140,6 +151,20 @@ steps:
             MSG="✅ [$STEP_NUM/$TOTAL] $FNAME done | $PY_NOW py files"
             [ -n "$TEST_COUNT" ] && MSG="$MSG | $TEST_COUNT"
             openclaw message send --channel telegram --target "$CTO_TARGET" -m "$MSG" --json 2>/dev/null || true
+          fi
+          # ── Update progress file (lobster-owned: completed_steps) ──
+          if [ -f "$PROGRESS_FILE" ]; then
+            python3 -c "
+import json
+p = json.load(open('$PROGRESS_FILE'))
+cs = p.get('completed_steps', [])
+if '$FNAME' not in cs: cs.append('$FNAME')
+p['completed_steps'] = cs
+p['current_step'] = '$FNAME (done)'
+p['workspace_stats'] = {'py_files': $PY_NOW, 'tests': '$TEST_COUNT'}
+p['updated_at'] = __import__('time').strftime('%Y-%m-%dT%H:%M:%SZ', __import__('time').gmtime())
+open('$PROGRESS_FILE', 'w').write(json.dumps(p, indent=2))
+" 2>/dev/null || true
           fi
         done
         echo "{\"ok\":true,\"steps_run\":$STEP_NUM}"
