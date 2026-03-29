@@ -80,19 +80,16 @@ def write_progress(root: str, progress: dict):
             except Exception:
                 existing = {}
 
-        # Lobster-owned fields: only overwrite if we have real values (not defaults)
+        # Lobster-owned fields: ALWAYS preserve from file unless terminal state
         lobster_fields = ("current_step", "completed_steps")
+        is_terminal = progress.get("status") in ("completed", "failed")
         for field in lobster_fields:
-            if field in existing and field in progress:
-                our_val = progress[field]
-                their_val = existing[field]
-                # Keep lobster's value unless we're setting a terminal state
-                if progress.get("status") in ("completed", "failed"):
+            if field in existing:
+                if is_terminal:
                     pass  # Terminal — our value wins (done/failed)
-                elif our_val == "launching" and their_val != "launching":
-                    progress[field] = their_val  # Don't regress from lobster's step
-                elif our_val == [] and their_val:
-                    progress[field] = their_val  # Don't clear lobster's list
+                else:
+                    # Always use lobster's value from file, not our stale in-memory value
+                    progress[field] = existing[field]
 
         pfile.write_text(json.dumps(progress, indent=2))
     except Exception:
@@ -623,7 +620,7 @@ def main():
             log(f"{label} started ({elapsed}s)")
             # Lobster already sends ⏳/✅ per step — no duplicate notify here
 
-            # Report completion of previous step
+            # Report completion of previous step (log only — lobster owns progress file steps)
             if last_step:
                 prev_label = STEP_LABELS.get(last_step, last_step)
                 completed_steps += 1
@@ -632,15 +629,12 @@ def main():
                 if ws_info.get("py_files"):
                     extra = f" | {ws_info['py_files']} py files, {ws_info.get('test_files', 0)} tests"
                 log(f"  ✅ {prev_label} done{extra}")
-                if last_step not in progress["completed_steps"]:
-                    progress["completed_steps"].append(last_step)
                 progress["workspace_stats"] = ws_info
 
             last_step = current_step
             last_report_time = time.time()
 
-            # Update progress file
-            progress["current_step"] = current_step
+            # Update progress file (don't set current_step — lobster owns it)
             progress["elapsed_seconds"] = elapsed
             write_progress(root, progress)
 
